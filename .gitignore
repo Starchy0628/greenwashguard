@@ -45,7 +45,7 @@ desktop.ini
 logs/
 *.log.*
 
-# ---- 数据文件 ----
+# ---- 数据文件（仅排除数据处理产生的原始文本，不要用通配符误伤源码依赖文件） ----
 data/input/
 data/output/*
 !data/output/.gitkeep
@@ -53,8 +53,10 @@ data/raw/
 *.pdf
 *.docx
 *.doc
-*.txt
+data/**/*.txt
 !data/sample/*.txt
+!requirements.txt
+!**/requirements.txt
 
 # ---- 测试覆盖率 ----
 .coverage
