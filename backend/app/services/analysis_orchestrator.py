@@ -269,14 +269,11 @@ class AnalysisOrchestrator:
         Returns:
             与 mock_service 返回结构一致的字典
         """
-        from app.services.llm_client import (
-            DEFAULT_LLM_MODELS,
-            create_llm_client,
-        )
+        from app.services.llm_client import DEFAULT_LLM_MODELS
         from app.services.classifier import SentenceClassifier
         from app.services.sentiment import SentimentAnalyzer
-        from app.services.fusion import majority_vote, compute_fleiss_kappa
-        from app.services.calculator import calculate_greenwash_index
+        from app.services.fusion import MajorityVotingFuser
+        from app.services.calculator import GreenwashIndexCalculator
         from app.services.industry_service import get_industry_median
 
         settings = get_settings()
@@ -285,100 +282,109 @@ class AnalysisOrchestrator:
         api_keys = {
             "deepseek-r1": settings.deepseek_api_key,
             "qwen-max": settings.qwen_api_key,
-            "glm-ocr": settings.glm_api_key,
+            "glm-4.7": settings.glm_api_key,
         }
-
-        # 构建 fallback model 字典
-        fallback_models = {
-            "glm-ocr": settings.glm_fallback_model,
-        }
-
-        # 创建三个 LLM 客户端
-        clients = []
-        for model_config in DEFAULT_LLM_MODELS:
-            client = create_llm_client(
-                model_config,
-                api_keys=api_keys,
-                use_mock=False,
-                fallback_model_ids=fallback_models,
-            )
-            clients.append(client)
 
         # 创建分类器和情感分析器
-        classifier = SentenceClassifier(clients)
-        sentiment_analyzer = SentimentAnalyzer(clients)
+        classifier = SentenceClassifier(
+            model_configs=DEFAULT_LLM_MODELS,
+            api_keys=api_keys,
+            use_mock=False,
+        )
+        sentiment_analyzer = SentimentAnalyzer(
+            model_configs=DEFAULT_LLM_MODELS,
+            api_keys=api_keys,
+            use_mock=False,
+        )
 
         # 逐句分类（分批处理，避免单次调用太长）
         all_classifications = []
         batch_size = 10
         for i in range(0, len(sentences), batch_size):
             batch = sentences[i:i + batch_size]
-            batch_results = classifier.classify_batch(batch)
+            batch_results = classifier.classify_batch(batch, return_details=True)
             all_classifications.extend(batch_results)
             await asyncio.sleep(0.1)
 
-        # 多数投票确权
-        voted_results = majority_vote(all_classifications)
+        # 多数投票确权（使用 MajorityVotingFuser）
+        voter = MajorityVotingFuser()
+        voted_data_list = []
+        for cr in all_classifications:
+            fusion = voter.fuse(cr.model_results)
+            voted_data_list.append({
+                "sentence_text": cr.sentence,
+                "model_results_list": [
+                    cr.model_results.get("deepseek-r1", "descriptive"),
+                    cr.model_results.get("qwen-max", "descriptive"),
+                    cr.model_results.get("glm-4.7", "descriptive"),
+                ],
+                "final_category": fusion.final_result,
+                "vote_type": "unanimous" if fusion.confidence == 1.0 else "majority" if fusion.confidence >= 0.5 else "full_divergence",
+                "confidence": fusion.confidence,
+                "needs_review": fusion.is_ambiguous,
+            })
 
-        # 计算 Fleiss' Kappa
-        fleiss_kappa = compute_fleiss_kappa(all_classifications)
+        # 计算整体 Fleiss' Kappa
+        batch_for_kappa = [cr.model_results for cr in all_classifications]
+        fleiss_kappa = voter.calculate_overall_kappa(batch_for_kappa)
 
         # 对描述性和实质性语句做情感打分
         descriptive_substantive = [
-            r for r in voted_results
+            r for r in voted_data_list
             if r["final_category"] in ("descriptive", "substantive")
         ]
 
+        sentiment_map = {}
         if descriptive_substantive:
             texts_for_sentiment = [r["sentence_text"] for r in descriptive_substantive]
-            sentiment_results = sentiment_analyzer.analyze_batch(texts_for_sentiment)
+            sentiment_results = sentiment_analyzer.analyze_batch(texts_for_sentiment, return_details=True)
+            for sr in sentiment_results:
+                sentiment_map[sr.sentence] = {
+                    "avg_score": sr.final_score,
+                    "std": sr.score_std,
+                }
 
-            # 把情感分数回填
-            sentiment_map = {s["sentence_text"]: s for s in sentiment_results}
-            for r in voted_results:
-                if r["sentence_text"] in sentiment_map:
-                    r["sentiment_score"] = sentiment_map[r["sentence_text"]]["avg_score"]
-                    r["sentiment_std"] = sentiment_map[r["sentence_text"]].get("std", 0.0)
-                else:
-                    r["sentiment_score"] = 0.5
-                    r["sentiment_std"] = 0.0
-        else:
-            for r in voted_results:
-                r["sentiment_score"] = 0.5
+        for r in voted_data_list:
+            if r["sentence_text"] in sentiment_map:
+                r["sentiment_score"] = sentiment_map[r["sentence_text"]]["avg_score"]
+                r["sentiment_std"] = sentiment_map[r["sentence_text"]]["std"]
+            else:
+                r["sentiment_score"] = 0.0
                 r["sentiment_std"] = 0.0
 
         # 统计数量
-        substantive_count = sum(1 for r in voted_results if r["final_category"] == "substantive")
-        descriptive_count = sum(1 for r in voted_results if r["final_category"] == "descriptive")
-        non_env_count = sum(1 for r in voted_results if r["final_category"] == "non_environmental")
-        divergence_count = sum(1 for r in voted_results if r["needs_review"])
+        substantive_count = sum(1 for r in voted_data_list if r["final_category"] == "substantive")
+        descriptive_count = sum(1 for r in voted_data_list if r["final_category"] == "descriptive")
+        non_env_count = sum(1 for r in voted_data_list if r["final_category"] == "non_environmental")
+        divergence_count = sum(1 for r in voted_data_list if r["needs_review"])
 
         # 计算语调分数（描述性语句的平均情感分）
-        descriptive_results = [r for r in voted_results if r["final_category"] == "descriptive"]
+        descriptive_results = [r for r in voted_data_list if r["final_category"] == "descriptive"]
         if descriptive_results:
             tone_score = sum(r["sentiment_score"] for r in descriptive_results) / len(descriptive_results)
         else:
-            tone_score = 0.5
+            tone_score = 0.0
 
         # 获取行业中位数
         current_year = datetime.now().year
         industry_median = get_industry_median(db, industry, current_year)
 
         # 计算 GW 指数
-        gw_index = calculate_greenwash_index(tone_score, industry_median)
+        calc = GreenwashIndexCalculator()
+        gw_index = calc.calculate_greenwash_index(tone_score, industry_median)
 
         # 构造 sentence_results
         sentence_results = []
-        for idx, r in enumerate(voted_results):
+        for idx, r in enumerate(voted_data_list):
             sentence_results.append({
                 "sentence_text": r["sentence_text"],
                 "sentence_order": idx,
-                "deepseek_result": r["model_results"][0] if len(r["model_results"]) > 0 else "non_environmental",
-                "qwen_result": r["model_results"][1] if len(r["model_results"]) > 1 else "non_environmental",
-                "glm_result": r["model_results"][2] if len(r["model_results"]) > 2 else "non_environmental",
+                "deepseek_result": r["model_results_list"][0],
+                "qwen_result": r["model_results_list"][1],
+                "glm_result": r["model_results_list"][2],
                 "final_category": r["final_category"],
-                "vote_type": r.get("vote_type", "unanimous"),
-                "confidence": r.get("confidence", 1.0),
+                "vote_type": r["vote_type"],
+                "confidence": r["confidence"],
                 "sentiment_score": r["sentiment_score"],
                 "sentiment_std": r["sentiment_std"],
                 "needs_review": r["needs_review"],
