@@ -11,7 +11,7 @@ from app.models.analysis import AnalysisRecord
 from app.models.sentence import Sentence
 from app.schemas import AnalysisRecordResponse, SentenceResponse, AnalysisQuery
 from app.services.mock_service import run_mock_analysis
-from app.services.industry_service import compute_industry_benchmarks, update_risk_levels
+from app.services.industry_service import get_warn_threshold
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -234,9 +234,10 @@ def _run_analysis_flow(analysis_id: str, company: Company, db_session: Session):
     try:
         # 阶段1: 读取本地真实MD&A文本
         _analysis_progress[analysis_id].update({"step": 0, "status": "running", "message": "读取企业最新MD&A文本"})
-        text = AnalysisOrchestrator._get_local_mda_text(company)
+        text, mda_year = AnalysisOrchestrator._get_local_mda_text(company)
         if not text:
             text = MOCK_REPORT_TEXT
+            mda_year = 0
 
         # 阶段2: 语句切分与过滤
         _analysis_progress[analysis_id].update({"step": 1, "status": "running", "message": "语句切分与环保相关性过滤"})
@@ -250,7 +251,7 @@ def _run_analysis_flow(analysis_id: str, company: Company, db_session: Session):
         _analysis_progress[analysis_id].update({"step": 3, "status": "running", "message": "语境情感打分 + 行业基准修正"})
 
         # 保存到数据库
-        current_year = datetime.now().year
+        current_year = mda_year if mda_year > 0 else datetime.now().year
 
         # 将该企业旧记录的 is_latest 置为 False
         db.query(AnalysisRecord).filter(
@@ -300,9 +301,11 @@ def _run_analysis_flow(analysis_id: str, company: Company, db_session: Session):
 
         db.commit()
 
-        # 重新计算行业基准和风险等级
-        compute_industry_benchmarks(db, current_year)
-        update_risk_levels(db, current_year)
+        # 仅更新当前企业的风险等级，不重新计算全行业基准（避免样本量波动）
+        threshold = get_warn_threshold(db, current_year)
+        if threshold > 0:
+            record.risk_level = "预警" if record.gw_index >= threshold else "正常"
+            db.commit()
 
         _analysis_progress[analysis_id].update({
             "step": 4,

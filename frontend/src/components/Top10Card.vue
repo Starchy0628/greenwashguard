@@ -1,5 +1,5 @@
 <template>
-  <div class="risk-card" @click="$emit('click')">
+  <div class="risk-card" :class="{ 'warn-card': isWarn }" @click="$emit('click')">
     <SealTag :show="isWarn" />
     <div class="rank">NO.{{ rank }}</div>
     <div class="cname">{{ company.company_name }}</div>
@@ -31,10 +31,18 @@ const gwDisplay = computed(() => props.company.gw_index?.toFixed(4) ?? '--')
   padding: 16px 14px 14px;
   cursor: pointer;
   transition: transform .2s ease, box-shadow .2s ease;
+  border: 1px solid transparent;
+}
+.risk-card.warn-card {
+  background: rgba(168, 59, 46, 0.12);
+  border-color: var(--cinnabar);
 }
 .risk-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 10px 24px rgba(0,0,0,.25);
+}
+.risk-card.warn-card:hover {
+  box-shadow: 0 10px 24px rgba(168, 59, 46, 0.3);
 }
 .rank {
   font-size: 11px;

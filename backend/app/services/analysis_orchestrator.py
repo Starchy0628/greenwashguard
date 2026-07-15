@@ -25,7 +25,7 @@ from app.models.company import Company
 from app.models.analysis import AnalysisRecord
 from app.models.sentence import Sentence
 from app.services.mock_service import run_mock_analysis, generate_mock_company_text
-from app.services.industry_service import compute_industry_benchmarks, update_risk_levels
+from app.services.industry_service import get_industry_median, get_warn_threshold
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.logging_setup import get_request_id
@@ -191,6 +191,7 @@ class AnalysisOrchestrator:
                     text = get_analysis_text(parsed)
                     data_source = "MD&A"
                     key_indicators = parsed.key_indicators
+                    current_year = datetime.now().year
                 else:
                     fetch_error = error or "无法获取年报"
                     push_fn("analysis_error", {
@@ -208,16 +209,18 @@ class AnalysisOrchestrator:
                 data_source = "MD&A(Mock降级)"
         else:
             # mock模式下优先读取本地已导入的真实MD&A文本，找不到才生成mock模板
-            text = AnalysisOrchestrator._get_local_mda_text(company)
+            text, mda_year = AnalysisOrchestrator._get_local_mda_text(company)
             if text:
                 data_source = "MD&A(本地)"
+                current_year = mda_year  # 使用文件实际年份
                 logger.info(
-                    f"mock模式使用本地MD&A文本: {company.stock_code}, 长度={len(text)}"
+                    f"mock模式使用本地MD&A文本: {company.stock_code}, 年份={mda_year}, 长度={len(text)}"
                 )
             else:
                 target_gw = existing.gw_index if existing else None
                 text = AnalysisOrchestrator._get_mock_text(company, target_gw=target_gw)
                 data_source = "MD&A(Mock)"
+                current_year = datetime.now().year
 
         if not text or len(text.strip()) < 50:
             push_fn("analysis_error", {
@@ -292,8 +295,6 @@ class AnalysisOrchestrator:
             "message": "语境情感打分 + 行业基准修正，合成GW指数...",
         })
 
-        current_year = datetime.now().year
-
         db.query(AnalysisRecord).filter(
             AnalysisRecord.company_id == company.id,
             AnalysisRecord.is_latest == True,
@@ -340,9 +341,11 @@ class AnalysisOrchestrator:
 
         db.commit()
 
-        compute_industry_benchmarks(db, current_year)
-        update_risk_levels(db, current_year)
-        db.commit()
+        # 仅更新当前企业的风险等级，不重新计算全行业基准（避免样本量波动）
+        threshold = get_warn_threshold(db, current_year)
+        if threshold > 0:
+            record.risk_level = "预警" if record.gw_index >= threshold else "正常"
+            db.commit()
 
         db.refresh(record)
 
@@ -526,17 +529,17 @@ class AnalysisOrchestrator:
         }
 
     @staticmethod
-    def _get_local_mda_text(company: Company) -> str:
+    def _get_local_mda_text(company: Company) -> tuple[str, int]:
         """从本地MD&A数据目录读取该企业最新的MD&A文本
 
         扫描 MDA_ROOT/年份/文本/ 目录，找到匹配该企业股票代码的最新文件。
-        返回文件内容，若找不到则返回空字符串。
+        返回 (text, year) 元组，若找不到则返回 ("", 0)。
         """
         if not company or not company.stock_code:
-            return ""
+            return "", 0
         if not MDA_ROOT.exists():
             logger.warning(f"MD&A根目录不存在: {MDA_ROOT}")
-            return ""
+            return "", 0
 
         stock_code = company.stock_code
         latest_file = None
@@ -572,20 +575,20 @@ class AnalysisOrchestrator:
                 logger.info(
                     f"从本地MD&A读取 [{stock_code}] 最新文本: {latest_file.name} ({len(text)}字符)"
                 )
-                return text
+                return text, latest_year
             except UnicodeDecodeError:
                 with open(latest_file, "r", encoding="gbk") as fh:
                     text = fh.read().strip()
                 logger.info(
                     f"从本地MD&A读取 [{stock_code}] 最新文本(gbk): {latest_file.name} ({len(text)}字符)"
                 )
-                return text
+                return text, latest_year
             except Exception as e:
                 logger.warning(f"读取MD&A文件失败 [{latest_file}]: {e}")
-                return ""
+                return "", 0
 
         logger.info(f"本地MD&A目录中未找到 [{stock_code}] 的文本")
-        return ""
+        return "", 0
 
     @staticmethod
     def _get_mock_text(company: Company = None, target_gw: float = None) -> str:

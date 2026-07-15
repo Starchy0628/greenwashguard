@@ -8,6 +8,7 @@
         </div>
         <div class="result-industry">
           所属行业：{{ result?.industry }}
+          <span v-if="result?.year" class="result-year"> | 来源：{{ result?.year }} 年报</span>
           <span v-if="isSampleInsufficient" class="ref-tag" title="行业样本量不足30家，结果仅供参考">参考</span>
         </div>
       </div>
@@ -111,6 +112,10 @@ const trendData = computed(() => props.result?.trend || [])
   font-size: 12px;
   color: var(--ink-soft);
   margin-top: 2px;
+}
+.result-year {
+  color: var(--jade);
+  font-weight: 500;
 }
 
 .gw-big {
