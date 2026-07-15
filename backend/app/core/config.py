@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # 日志级别
     log_level: str = "INFO"
 
+    # MD&A 数据目录（本地年报文本路径）
+    mda_root: str = r"E:\固定快速访问\下载\CMDA_管理层讨论与分析_ALL"
+
+    # 默认分析年份（找不到本地文件时使用，设为最近一个完整年报年度）
+    default_fiscal_year: int = 2025
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

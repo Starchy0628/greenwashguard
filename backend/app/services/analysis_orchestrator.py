@@ -30,10 +30,12 @@ from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.logging_setup import get_request_id
 
-# 本地MD&A数据根目录（与 import_mda_data.py 保持一致）
-MDA_ROOT = Path(r"E:\固定快速访问\下载\CMDA_管理层讨论与分析_ALL")
 MDA_FILE_PATTERN = re.compile(r"^(\d{6})_(.+?)_(\d{4}-\d{2}-\d{2})\.txt$")
 TEXT_SUBDIR = "文本"
+
+_settings = get_settings()
+MDA_ROOT = Path(_settings.mda_root)
+DEFAULT_FISCAL_YEAR = _settings.default_fiscal_year
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +193,7 @@ class AnalysisOrchestrator:
                     text = get_analysis_text(parsed)
                     data_source = "MD&A"
                     key_indicators = parsed.key_indicators
-                    current_year = datetime.now().year
+                    current_year = DEFAULT_FISCAL_YEAR
                 else:
                     fetch_error = error or "无法获取年报"
                     push_fn("analysis_error", {
@@ -220,7 +222,7 @@ class AnalysisOrchestrator:
                 target_gw = existing.gw_index if existing else None
                 text = AnalysisOrchestrator._get_mock_text(company, target_gw=target_gw)
                 data_source = "MD&A(Mock)"
-                current_year = datetime.now().year
+                current_year = DEFAULT_FISCAL_YEAR
 
         if not text or len(text.strip()) < 50:
             push_fn("analysis_error", {
@@ -492,7 +494,7 @@ class AnalysisOrchestrator:
         else:
             tone_score = 0.0
 
-        current_year = datetime.now().year
+        current_year = DEFAULT_FISCAL_YEAR
         industry_median = get_industry_median(db, industry, current_year)
 
         calc = GreenwashIndexCalculator()
@@ -724,7 +726,7 @@ class AnalysisOrchestrator:
             tone_score = 0.0
 
         # 获取行业中位数
-        current_year = datetime.now().year
+        current_year = DEFAULT_FISCAL_YEAR
         industry_median = get_industry_median(db, industry, current_year)
 
         # 计算 GW 指数
@@ -791,7 +793,7 @@ class AnalysisOrchestrator:
         )
 
         # 获取行业年度样本量
-        current_year = record.year or datetime.now().year
+        current_year = record.year or DEFAULT_FISCAL_YEAR
         industry = record.company.industry if record.company else ""
         industry_benchmark = (
             db.query(IndustryBenchmark)
