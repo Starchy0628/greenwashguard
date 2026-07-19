@@ -1,17 +1,49 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --ink: #12201B;
-  --ink-2: #1B2E27;
-  --paper: #EEEEE4;
-  --paper-2: #F7F6EE;
-  --line: rgba(18, 32, 27, 0.12);
-  --line-soft: rgba(238, 238, 228, 0.14);
-  --jade: #2F6F62;
-  --jade-dim: #6E9186;
-  --cinnabar: #A83B2E;
-  --gold: #B08A46;
-  --ink-soft: rgba(18, 32, 27, 0.55);
-  --paper-soft: rgba(238, 238, 228, 0.6);
-  --radius: 3px;
+  /* 浅色基底（OpenAI Platform 风格） */
+  --bg-base: #F6F8FA;
+  --bg-elevated: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-hover: #F0F2F5;
+
+  /* 面板/卡片 */
+  --panel-bg: #FFFFFF;
+  --panel-bg-hover: #F5F7FA;
+  --panel-border: #E5E7EB;
+  --panel-border-hover: #D1D5DB;
+
+  /* 文字层级 */
+  --text-primary: #0A0A0A;
+  --text-secondary: #3D3D3D;
+  --text-muted: #6B7280;
+  --text-dim: #9CA3AF;
+
+  /* 主色调 - 低饱和度森绿 */
+  --jade: #3A7A6E;
+  --jade-dim: #5A9388;
+  --jade-soft: rgba(58, 122, 110, 0.10);
+
+  /* 风险警示 - 低饱和暗酒红 */
+  --cinnabar: #8B3A3A;
+  --cinnabar-dim: #A85050;
+  --cinnabar-soft: rgba(139, 58, 58, 0.10);
+
+  /* 鎏金辅助 */
+  --gold: #B89548;
+  --gold-soft: rgba(201, 169, 97, 0.14);
+
+  /* 分割线 */
+  --line: #E5E7EB;
+  --line-soft: #F0F2F5;
+
+  /* 圆角统一 */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  /* 字体 */
+  --font-sans: 'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
 }

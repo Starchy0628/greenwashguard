@@ -219,10 +219,13 @@ def mock_sentiment_score(sentence: str) -> Tuple[float, float]:
     return final_score, std
 
 
-def run_mock_analysis(text: str, industry: str = "白酒") -> dict:
+def run_mock_analysis(text: str, industry: str = "白酒", industry_median: float = None) -> dict:
     """
     执行完整的 Mock 分析流程
     流程：句子切分 → 关键词过滤 → 三模型分类(模拟) → 情感打分 → 行业基准修正 → GW指数
+
+    Args:
+        industry_median: 从数据库获取的真实行业中位数。若为 None，则使用模拟值（仅用于无数据库上下文的场景）
     """
     # 1. 句子切分
     raw_sentences = split_sentences(text)
@@ -257,19 +260,21 @@ def run_mock_analysis(text: str, industry: str = "白酒") -> dict:
         if category == "descriptive":
             sentiment, sentiment_std = mock_sentiment_score(sent)
 
-        if category == "substantive":
+        if vote_type == "full_divergence":
+            dispute_count += 1
+            divergence_count += 1
+        elif category == "substantive":
             substantive_count += 1
+            if vote_type == "unanimous":
+                unanimous_count += 1
+            else:
+                majority_count += 1
         elif category == "descriptive":
             descriptive_count += 1
-        elif category == "dispute":
-            dispute_count += 1
-
-        if vote_type == "unanimous":
-            unanimous_count += 1
-        elif vote_type == "majority":
-            majority_count += 1
-        else:
-            divergence_count += 1
+            if vote_type == "unanimous":
+                unanimous_count += 1
+            else:
+                majority_count += 1
 
         sentence_results.append({
             "sentence_text": sent,
@@ -292,8 +297,9 @@ def run_mock_analysis(text: str, industry: str = "白酒") -> dict:
     ]
     tone_score = round(sum(descriptive_scores) / len(descriptive_scores), 6) if descriptive_scores else 0.0
 
-    # 5. 行业基准（模拟）
-    industry_median = _get_mock_industry_median(industry)
+    # 5. 行业基准
+    if industry_median is None:
+        industry_median = _get_mock_industry_median(industry)
     gw_index = round(max(0.0, tone_score - industry_median), 6)
 
     # 6. Fleiss' Kappa（模拟）
@@ -323,33 +329,43 @@ def run_mock_analysis(text: str, industry: str = "白酒") -> dict:
 
 
 def _get_mock_industry_median(industry: str) -> float:
-    """获取模拟的行业语调中位数
-    
-    中位数设置在 0.25-0.40 之间，确保描述性语句情感分（约 0.2-0.6）
-    与中位数的差值能产生合理的 GW 指数分布。
+    """获取模拟的行业语调中位数（固定值，无随机性）
+
+    仅在无数据库上下文时使用。有数据库时应从 IndustryBenchmark 表获取真实中位数。
     """
     medians = {
         "白酒": 0.35, "食品饮料": 0.30, "电池": 0.28,
         "新能源汽车": 0.26, "房地产": 0.25, "能源化工": 0.22,
         "银行": 0.20, "光伏": 0.30, "化工": 0.24, "电子": 0.28,
+        "农林牧渔": 0.26, "医药生物": 0.28, "机械设备": 0.25,
+        "电力设备": 0.26, "汽车": 0.27, "交通运输": 0.24,
+        "公用事业": 0.25, "有色金属": 0.23, "钢铁": 0.22,
+        "建筑材料": 0.24, "建筑装饰": 0.25, "商贸零售": 0.26,
+        "社会服务": 0.27, "轻工制造": 0.25, "纺织服饰": 0.26,
+        "通信": 0.27, "计算机": 0.28, "传媒": 0.29,
+        "国防军工": 0.25, "石油石化": 0.23, "煤炭": 0.22,
+        "环保": 0.28, "美容护理": 0.29, "综合": 0.25,
+        "家用电器": 0.26,
     }
-    base = medians.get(industry, 0.25)
-    return round(base + random.uniform(-0.02, 0.02), 6)
+    return round(medians.get(industry, 0.25), 6)
 
 
 def generate_mock_company_text(company_name: str, industry: str = "白酒", seed: int = 0, target_gw: float = None) -> str:
     """生成企业特定的模拟 MD&A 文本
-    
+
     与种子数据生成逻辑保持一致，确保拉取前后数据一致性。
     实质性语句约占环境语句的 60%，描述性约 30%，分歧约 10%。
-    
+
     Args:
         company_name: 企业名称
         industry: 行业
         seed: 随机种子
         target_gw: 目标 GW 指数（用于调整描述性语句的漂绿程度）
     """
-    random.seed(seed if seed else hash(company_name + industry) % 100000)
+    # 使用稳定种子（不依赖Python内置hash的随机化）
+    if not seed:
+        seed = _stable_seed(company_name + industry)
+    random.seed(seed)
 
     # 实质性语句模板（有具体数据/认证）
     substantive_templates = [

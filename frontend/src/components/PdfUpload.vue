@@ -17,7 +17,13 @@
       />
 
       <div v-if="!file" class="upload-placeholder">
-        <div class="upload-icon">📄</div>
+        <div class="upload-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
         <div class="upload-title">上传企业年报 PDF</div>
         <div class="upload-desc">
           拖拽文件到此处，或
@@ -30,7 +36,12 @@
 
       <div v-else class="upload-loaded">
         <div class="file-info">
-          <span class="file-icon">📄</span>
+          <span class="file-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+          </span>
           <span class="file-name">{{ file.name }}</span>
           <span class="file-size">{{ formatSize(file.size) }}</span>
         </div>
@@ -40,7 +51,13 @@
 
     <!-- 错误提示 -->
     <div v-if="errorMsg" class="upload-error">
-      <span class="err-icon">⚠️</span>
+      <span class="err-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </span>
       {{ errorMsg }}
       <button class="err-dismiss" @click="errorMsg = ''">×</button>
     </div>
@@ -55,27 +72,11 @@
         {{ analyzing ? '分析中...' : '开始分析' }}
       </button>
     </div>
-
-    <!-- 进度指示 -->
-    <LiveSteps
-      :active="analyzing"
-      :current-step="liveStep"
-      :steps="pdfSteps"
-    />
-
-    <!-- 分析结果 -->
-    <ResultCard
-      :result="result"
-      :is-watched="false"
-      @toggle-watch="() => {}"
-    />
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import LiveSteps from './LiveSteps.vue'
-import ResultCard from './ResultCard.vue'
 
 const fileInput = ref(null)
 const file = ref(null)
@@ -202,105 +203,128 @@ function handleSSE(type, data) {
       break
     case 'analysis_error':
       errorMsg.value = data.message
-      if (!data.retryable) {
-        analyzing.value = false
-      }
+      analyzing.value = false
       break
   }
 }
+
+// 暴露给父组件：用于在 Hero Banner 下方渲染 LiveSteps 与 ResultCard
+defineExpose({
+  file,
+  analyzing,
+  liveStep,
+  result,
+  errorMsg,
+  pdfSteps,
+})
 </script>
 
 <style scoped>
-.pdf-upload { margin-bottom: 20px; }
+.pdf-upload { margin-bottom: 0; }
 
 .upload-area {
-  border: 2px dashed var(--line-soft);
-  border-radius: var(--radius);
-  padding: 36px 24px;
+  border: 2px dashed var(--panel-border);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px;
   text-align: center;
-  transition: all .2s;
+  transition: all 0.25s ease;
   cursor: pointer;
+  background: var(--panel-bg);
 }
 .upload-area.dragging {
-  border-color: var(--jade);
-  background: rgba(47, 111, 98, 0.08);
+  border-color: var(--jade-dim);
+  background: var(--jade-soft);
+  transform: scale(1.01);
 }
 .upload-area.hasFile {
   border-style: solid;
-  border-color: var(--jade-dim);
-  padding: 16px 20px;
+  border-color: var(--panel-border-hover);
+  padding: 14px 18px;
 }
 
-.upload-placeholder { }
-.upload-icon { font-size: 36px; margin-bottom: 10px; }
+.upload-placeholder { color: var(--text-secondary); }
+.upload-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--jade-soft);
+  color: var(--jade-dim);
+  margin: 0 auto 12px;
+}
 .upload-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--paper);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
   margin-bottom: 6px;
+  font-family: var(--font-sans);
 }
 .upload-desc {
-  font-size: 13px;
-  color: var(--paper-soft);
+  font-size: 12px;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 .browse-btn {
   background: none;
   border: none;
-  color: var(--jade);
+  color: var(--jade-dim);
   cursor: pointer;
   font-weight: 600;
   text-decoration: underline;
-  font-family: 'Noto Sans SC';
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: 12px;
 }
 .upload-hint {
   font-size: 11px;
-  color: var(--ink-soft);
+  color: var(--text-muted);
 }
 
-.upload-loaded { }
 .file-info {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
-  color: var(--paper);
+  font-size: 13px;
+  color: var(--text-primary);
 }
-.file-icon { font-size: 20px; }
+.file-icon {
+  display: inline-flex;
+  color: var(--jade);
+}
 .file-name { font-weight: 600; flex: 1; text-align: left; }
-.file-size { font-size: 12px; color: var(--paper-soft); }
+.file-size { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
 .clear-btn {
   background: none;
-  border: 1px solid var(--line-soft);
-  color: var(--paper-soft);
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 12px;
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
   cursor: pointer;
-  margin-top: 10px;
-  font-family: 'Noto Sans SC';
+  font-family: var(--font-sans);
+  transition: all 0.25s ease;
 }
-.clear-btn:hover { border-color: var(--cinnabar); color: var(--cinnabar); }
+.clear-btn:hover { border-color: var(--cinnabar); color: var(--cinnabar-dim); }
 .clear-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .upload-error {
   margin-top: 12px;
-  background: rgba(168, 59, 46, 0.1);
+  background: var(--cinnabar-soft);
   border: 1px solid var(--cinnabar);
   border-radius: var(--radius);
   padding: 10px 14px;
-  font-size: 13px;
-  color: var(--cinnabar);
+  font-size: 12px;
+  color: var(--cinnabar-dim);
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.err-icon { font-size: 16px; }
+.err-icon { display: inline-flex; }
 .err-dismiss {
   background: none;
   border: none;
-  color: var(--cinnabar);
+  color: var(--cinnabar-dim);
   cursor: pointer;
   margin-left: auto;
   font-size: 16px;
@@ -309,15 +333,20 @@ function handleSSE(type, data) {
 .analyze-row { margin-top: 14px; }
 .analyze-btn {
   width: 100%;
-  background: var(--gold);
-  color: var(--ink);
+  background: var(--jade);
+  color: #fff;
   border: none;
   border-radius: var(--radius);
   padding: 12px;
-  font-weight: 700;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
-  font-family: 'Noto Sans SC';
+  font-family: var(--font-sans);
+  transition: background 0.25s ease, transform 0.25s ease;
+}
+.analyze-btn:hover:not(:disabled) {
+  background: var(--jade-dim);
+  transform: translateY(-1px);
 }
 .analyze-btn:disabled { opacity: .5; cursor: not-allowed; }
 </style>

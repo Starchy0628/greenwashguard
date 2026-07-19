@@ -8,7 +8,6 @@
         </div>
         <div class="result-industry">
           所属行业：{{ result?.industry }}
-          <span v-if="result?.year" class="result-year"> | 来源：{{ result?.year }} 年报</span>
           <span v-if="isSampleInsufficient" class="ref-tag" title="行业样本量不足30家，结果仅供参考">参考</span>
         </div>
       </div>
@@ -22,15 +21,15 @@
 
     <div class="metric-row">
       <div class="metric-item">
-        <div class="mv">{{ result?.substantive_count ?? 0 }}</div>
-        <div class="ml">已确权语句数</div>
+        <div class="mv">{{ result?.summary?.total_substantive ?? result?.substantive_count ?? 0 }}</div>
+        <div class="ml">实质性语句数</div>
       </div>
       <div class="metric-item">
-        <div class="mv">{{ result?.env_sentences ?? 0 }}</div>
-        <div class="ml">环境语句数</div>
+        <div class="mv">{{ result?.summary?.total_descriptive ?? result?.descriptive_count ?? 0 }}</div>
+        <div class="ml">描述性语句数</div>
       </div>
       <div class="metric-item">
-        <div class="mv">{{ result?.dispute_count ?? 0 }}</div>
+        <div class="mv">{{ result?.summary?.total_dispute ?? result?.dispute_count ?? 0 }}</div>
         <div class="ml">分歧语句数</div>
       </div>
       <div class="metric-item">
@@ -42,8 +41,8 @@
     </div>
 
     <SentenceList
-      :sentences="envSentences"
-      title="环境语句"
+      :year-groups="result?.yearGroups || []"
+      :title="'环境语句'"
     />
 
     <TrendChart :data="trendData" />
@@ -83,67 +82,69 @@ const trendData = computed(() => props.result?.trend || [])
 
 <style scoped>
 .result-card {
-  background: var(--paper);
-  color: var(--ink);
-  border-radius: var(--radius);
-  padding: 24px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
   display: none;
 }
-.result-card.show { display: block; animation: fade .4s ease; }
-@keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.result-card.show { display: block; animation: fade .4s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 .result-top {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .result-name {
-  font-family: 'Noto Serif SC';
+  font-family: var(--font-sans);
   font-weight: 700;
-  font-size: 20px;
+  font-size: 22px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
 }
 .result-code {
-  font-size: 13px;
-  color: var(--ink-soft);
-  font-weight: 400;
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 6px;
+  font-family: var(--font-mono);
 }
 .result-industry {
   font-size: 12px;
-  color: var(--ink-soft);
-  margin-top: 2px;
-}
-.result-year {
-  color: var(--jade);
-  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 .gw-big {
-  font-family: 'Noto Serif SC';
-  font-weight: 900;
-  font-size: 38px;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 42px;
   font-variant-numeric: tabular-nums;
-  margin-top: 14px;
+  margin-top: 20px;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
-.gw-big.warn { color: var(--cinnabar); }
+.gw-big.warn { color: var(--cinnabar-dim); }
 
 .gw-big .u {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  color: var(--ink-soft);
-  margin-left: 8px;
+  color: var(--text-muted);
+  margin-left: 10px;
 }
 
 .ref-tag {
   display: inline-block;
   margin-left: 6px;
-  padding: 1px 6px;
+  padding: 1px 8px;
   font-size: 10px;
   font-weight: 600;
   color: var(--gold);
-  background: rgba(200, 170, 100, 0.15);
-  border: 1px solid rgba(200, 170, 100, 0.4);
-  border-radius: 3px;
+  background: var(--gold-soft);
+  border: 1px solid rgba(201, 169, 97, 0.3);
+  border-radius: var(--radius-sm);
   vertical-align: middle;
   cursor: help;
 }
@@ -151,24 +152,25 @@ const trendData = computed(() => props.result?.trend || [])
 .metric-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin: 18px 0 20px;
-  padding: 14px;
-  background: var(--ink-soft-2);
+  gap: 12px;
+  margin: 22px 0 24px;
+  padding: 18px;
+  background: var(--bg-elevated);
   border-radius: var(--radius);
+  border: 1px solid var(--panel-border);
 }
 .metric-item { text-align: center; }
 .metric-item .mv {
-  font-family: 'Noto Serif SC';
-  font-weight: 800;
-  font-size: 20px;
-  color: var(--jade);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--jade-dim);
   font-variant-numeric: tabular-nums;
 }
 .metric-item .ml {
   font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 2px;
+  color: var(--text-muted);
+  margin-top: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -183,18 +185,19 @@ const trendData = computed(() => props.result?.trend || [])
   cursor: help;
 }
 
-.action-row { margin-top: 20px; }
+.action-row { margin-top: 24px; }
 .watch-btn {
   background: var(--jade);
   color: #fff;
   border: none;
-  padding: 10px 18px;
-  border-radius: 4px;
-  font-size: 12.5px;
+  padding: 11px 22px;
+  border-radius: var(--radius);
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Noto Sans SC';
+  font-family: var(--font-sans);
+  transition: background 0.25s ease;
 }
-.watch-btn.watched { background: var(--jade-dim); }
-.watch-btn:hover { opacity: .9; }
+.watch-btn.watched { background: var(--jade-dim); opacity: 0.7; }
+.watch-btn:hover { opacity: 0.9; }
 </style>

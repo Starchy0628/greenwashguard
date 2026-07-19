@@ -1,6 +1,9 @@
 <template>
   <section class="block">
-    <div class="block-head"><h2>我的关注列表</h2></div>
+    <SectionTitle>
+      我的关注列表
+      <template #aux>{{ items.length }} 家企业</template>
+    </SectionTitle>
 
     <div v-if="!items.length" class="watch-empty">
       暂无关注 · 查询企业后可添加关注
@@ -29,31 +32,21 @@
 </template>
 
 <script setup>
+import SectionTitle from './SectionTitle.vue'
+
 defineProps({ items: { type: Array, default: () => [] } })
 defineEmits(['select', 'remove'])
 </script>
 
 <style scoped>
-.block { margin-bottom: 44px; }
-.block-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-.block-head h2 {
-  font-family: 'Noto Serif SC';
-  font-weight: 700;
-  font-size: 18px;
-  margin: 0;
-}
+.block { margin-bottom: 96px; }
 
 .watch-empty {
-  border: 1px dashed var(--line-soft);
+  border: 1px dashed var(--panel-border);
   border-radius: var(--radius);
-  padding: 22px;
+  padding: 28px;
   text-align: center;
-  color: var(--paper-soft);
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -62,42 +55,50 @@ defineEmits(['select', 'remove'])
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--ink-2);
-  border: 1px solid var(--line-soft);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius);
-  padding: 12px 16px;
+  padding: 14px 18px;
   cursor: pointer;
+  transition: background 0.25s ease, border-color 0.25s ease;
 }
-.watch-row:hover { border-color: var(--jade-dim); }
+.watch-row:hover {
+  background: var(--panel-bg-hover);
+  border-color: var(--panel-border-hover);
+}
 
 .left { display: flex; align-items: center; gap: 12px; }
-.star { color: var(--gold); }
-.cname { font-weight: 600; font-size: 14px; }
+.star { color: var(--gold); font-size: 14px; }
+.cname { font-weight: 600; font-size: 14px; color: var(--text-primary); }
 
-.right { display: flex; align-items: center; gap: 12px; }
+.right { display: flex; align-items: center; gap: 14px; }
 .gw {
   font-variant-numeric: tabular-nums;
   font-size: 14px;
-  color: var(--paper-soft);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-weight: 500;
 }
-.gw.warn { color: var(--cinnabar); }
+.gw.warn { color: var(--cinnabar-dim); }
 
 .remove-btn {
   background: none;
-  border: 1px solid var(--line-soft);
-  color: var(--paper-soft);
-  width: 24px;
-  height: 24px;
-  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: all 0.25s ease;
 }
 .remove-btn:hover {
   border-color: var(--cinnabar);
-  color: var(--cinnabar);
+  color: var(--cinnabar-dim);
+  background: var(--cinnabar-soft);
 }
 </style>

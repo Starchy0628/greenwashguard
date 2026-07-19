@@ -487,21 +487,21 @@ def create_llm_client(model_config: Dict, api_keys: Dict = None, use_mock: bool 
 DEFAULT_LLM_MODELS = [
     {
         "name": "deepseek-r1",
-        "display_name": "DeepSeek-R1",
+        "display_name": "Deepseek",
         "type": "decoder_only",
         "api_base": "https://api.deepseek.com/v1",
         "model_id": "deepseek-reasoner",
     },
     {
         "name": "qwen-max",
-        "display_name": "Qwen-Max",
+        "display_name": "Qwen",
         "type": "decoder_only",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "model_id": "qwen-max",
     },
     {
         "name": "glm-4.7",
-        "display_name": "GLM-4.7",
+        "display_name": "GLM",
         "type": "decoder_only",
         "api_base": "https://open.bigmodel.cn/api/paas/v4",
         "model_id": "glm-4.7",

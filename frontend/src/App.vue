@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <AppHeader />
-    <QuerySection ref="queryRef" />
+    <HeroBanner ref="heroRef" />
     <Top10Grid
       :companies="top10"
       @select="handleSelect"
@@ -22,7 +22,7 @@ import { dashboardApi } from './api'
 import { useWatchlistStore } from './stores/watchlist'
 import {
   AppHeader,
-  QuerySection,
+  HeroBanner,
   Top10Grid,
   WatchList,
   GradingRule,
@@ -30,7 +30,7 @@ import {
 } from './components'
 
 const watchlistStore = useWatchlistStore()
-const queryRef = ref(null)
+const heroRef = ref(null)
 const top10 = ref([])
 
 async function fetchTop10() {
@@ -42,14 +42,14 @@ async function fetchTop10() {
 }
 
 function handleSelect(company) {
-  // 滚动到查询区顶部
-  const queryBlock = document.getElementById('query-block')
-  if (queryBlock) {
-    queryBlock.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 滚动到 Hero Banner 顶部
+  const heroBlock = document.getElementById('hero-banner')
+  if (heroBlock) {
+    heroBlock.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
   // 自动填入股票代码并触发查询
-  if (queryRef.value && company.stock_code) {
-    queryRef.value.searchByKeyword(company.stock_code)
+  if (heroRef.value && company.stock_code) {
+    heroRef.value.searchByKeyword(company.stock_code)
   }
 }
 
@@ -65,8 +65,8 @@ onMounted(() => {
 
 <style scoped>
 .app {
-  max-width: 1040px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 0 24px 80px;
+  padding: 0 32px 100px;
 }
 </style>

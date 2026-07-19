@@ -1,52 +1,25 @@
 <template>
   <header class="top">
-    <div class="brand">
-      <span class="glyph">諦</span>
-      <span class="name">谛观 GreenwashGuard</span>
-      <span class="sub">企业漂绿风险监测</span>
-    </div>
+    <BrandLogo :size="'medium'" :show-subtitle="true" subtitle="企业漂绿风险监测" />
   </header>
 </template>
+
+<script setup>
+import BrandLogo from './BrandLogo.vue'
+</script>
 
 <style scoped>
 header.top {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: linear-gradient(180deg, var(--ink) 82%, transparent);
-  padding: 22px 0 14px;
+  background: linear-gradient(180deg, var(--bg-base) 80%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 24px 0 18px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--line-soft);
-  margin-bottom: 28px;
-}
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.brand .glyph {
-  font-family: 'Noto Serif SC';
-  font-weight: 900;
-  font-size: 22px;
-  color: var(--gold);
-  letter-spacing: 2px;
-}
-
-.brand .name {
-  font-family: 'Noto Serif SC';
-  font-weight: 700;
-  font-size: 19px;
-  letter-spacing: 1px;
-}
-
-.brand .sub {
-  font-size: 11px;
-  color: var(--paper-soft);
-  letter-spacing: 2px;
-  margin-left: 2px;
+  margin-bottom: 36px;
 }
 </style>

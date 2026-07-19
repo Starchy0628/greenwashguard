@@ -1,5 +1,6 @@
 """行业基准计算服务"""
 import sys
+import logging
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -13,6 +14,61 @@ from app.models.company import Company, FINANCIAL_INDUSTRIES
 from app.models.industry import IndustryBenchmark
 
 MIN_REAL_SAMPLES = 5  # 真实企业数 ≥ 5 时不用种子数据
+
+logger = logging.getLogger(__name__)
+
+SW_L1_VALID_INDUSTRIES = {
+    "农林牧渔", "煤炭", "石油石化", "基础化工", "钢铁", "有色金属",
+    "电子", "电力设备", "汽车", "机械设备", "国防军工", "建筑材料",
+    "建筑装饰", "交通运输", "仓储物流", "房地产", "银行", "非银金融",
+    "家用电器", "食品饮料", "纺织服饰", "轻工制造", "医药生物", "公用事业",
+    "环保", "美容护理", "商贸零售", "社会服务", "计算机", "传媒", "通信",
+}
+
+MANUAL_FIX_MAP = {
+    "002252": "医药生物",
+    "300556": "计算机",
+    "688338": "医药生物",
+    "603986": "电子",
+    "601801": "传媒",
+}
+
+
+def validate_and_fix_industry(db: Session, stock_code: str, current_industry: str) -> str:
+    """
+    运行时行业一致性校验与自动修正
+    
+    规则:
+    1. 若当前行业在31个标准行业内，直接返回
+    2. 若不在标准列表中，查 MANUAL_FIX_MAP 强制修正
+    3. 修正后同步更新数据库中企业的行业字段
+    4. 输出告警日志
+    """
+    if current_industry in SW_L1_VALID_INDUSTRIES:
+        return current_industry
+
+    fixed_industry = MANUAL_FIX_MAP.get(stock_code)
+    if fixed_industry:
+        company = db.query(Company).filter(Company.stock_code == stock_code).first()
+        if company:
+            logger.warning(
+                f"行业分类异常自动修正 | 股票代码: {stock_code} | 股票名称: {company.company_name} "
+                f"| 原始错误行业: {current_industry} | 修正后标准行业: {fixed_industry}"
+            )
+            company.industry = fixed_industry
+            db.commit()
+        else:
+            logger.warning(
+                f"行业分类异常自动修正 | 股票代码: {stock_code} | 原始错误行业: {current_industry} "
+                f"| 修正后标准行业: {fixed_industry} | 警告: 未在数据库中找到该企业"
+            )
+        return fixed_industry
+
+    logger.error(
+        f"行业分类异常无法修正 | 股票代码: {stock_code} | 当前行业: {current_industry} "
+        f"| 该行业不在31个申万2021一级标准行业内，且无手动修正映射"
+    )
+    return current_industry
 
 
 def compute_industry_benchmarks(db: Session, year: int):
@@ -208,7 +264,8 @@ def get_industry_median(db: Session, industry: str, year: int) -> float:
     )
 
     if not records:
-        return 0.55  # 默认值
+        from app.services.mock_service import _get_mock_industry_median
+        return _get_mock_industry_median(industry)
 
     tones = sorted([r[0] for r in records])
     n = len(tones)

@@ -35,11 +35,11 @@ function stepClass(i) {
 
 <style scoped>
 .live-panel {
-  background: var(--ink-2);
-  border: 1px solid var(--line-soft);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 22px 24px;
+  margin-bottom: 24px;
   display: none;
 }
 .live-panel.show { display: block; }
@@ -47,21 +47,23 @@ function stepClass(i) {
 .live-step {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 12px;
+  padding: 7px 0;
   font-size: 13px;
-  color: var(--paper-soft);
-  opacity: .35;
+  color: var(--text-muted);
+  opacity: .4;
+  transition: opacity 0.3s ease, color 0.3s ease;
 }
-.live-step.active { opacity: 1; color: var(--paper); }
-.live-step.done { opacity: .7; color: var(--jade-dim); }
+.live-step.active { opacity: 1; color: var(--text-primary); }
+.live-step.done { opacity: .65; color: var(--jade-dim); }
 
 .live-step .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--paper-soft);
+  background: var(--text-dim);
   flex-shrink: 0;
+  transition: background 0.3s ease;
 }
 .live-step.active .dot { background: var(--gold); animation: pulse 1s infinite; }
 .live-step.done .dot { background: var(--jade-dim); }
@@ -69,9 +71,10 @@ function stepClass(i) {
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
 .live-progress {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 12px;
-  color: var(--paper-soft);
-  padding-left: 18px;
+  color: var(--text-muted);
+  padding-left: 20px;
+  font-family: var(--font-mono);
 }
 </style>

@@ -1,15 +1,16 @@
 <template>
   <section class="block">
-    <div class="block-head">
-      <h2><span class="idx">TOP 10</span>当前风险最高企业</h2>
-      <span class="note">按GW指数降序排列</span>
-    </div>
+    <SectionTitle>
+      风险企业 <span class="highlight">TOP 10</span>
+      <template #aux>按GW指数降序排列</template>
+    </SectionTitle>
     <div class="risk-grid">
       <Top10Card
         v-for="(c, i) in companies"
         :key="c.stock_code"
         :company="c"
         :rank="i + 1"
+        :max-gw="maxGw"
         @click="$emit('select', c)"
       />
     </div>
@@ -17,37 +18,26 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import Top10Card from './Top10Card.vue'
+import SectionTitle from './SectionTitle.vue'
 
-defineProps({ companies: { type: Array, default: () => [] } })
+const props = defineProps({ companies: { type: Array, default: () => [] } })
 defineEmits(['select'])
+
+const maxGw = computed(() => {
+  if (!props.companies.length) return 1
+  return Math.max(...props.companies.map(c => c.gw_index ?? 0), 0.01)
+})
 </script>
 
 <style scoped>
-.block { margin-bottom: 44px; }
-.block-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 14px;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.block-head h2 {
-  font-family: 'Noto Serif SC';
-  font-weight: 700;
-  font-size: 18px;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.block-head h2 .idx { color: var(--gold); font-size: 13px; font-weight: 500; letter-spacing: 1px; }
-.block-head .note { font-size: 12px; color: var(--paper-soft); }
+.block { margin-bottom: 96px; }
 
 .risk-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
+  grid-template-rows: repeat(2, 1fr);
+  gap: 14px;
 }
 </style>

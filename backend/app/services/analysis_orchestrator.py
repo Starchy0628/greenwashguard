@@ -16,6 +16,7 @@ import asyncio
 import logging
 import time
 import re
+import hashlib
 from pathlib import Path
 from typing import AsyncGenerator, Dict, Any, Optional, List
 from datetime import datetime
@@ -25,7 +26,7 @@ from app.models.company import Company
 from app.models.analysis import AnalysisRecord
 from app.models.sentence import Sentence
 from app.services.mock_service import run_mock_analysis, generate_mock_company_text
-from app.services.industry_service import get_industry_median, get_warn_threshold
+from app.services.industry_service import get_industry_median, get_warn_threshold, validate_and_fix_industry
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.logging_setup import get_request_id
@@ -38,6 +39,11 @@ MDA_ROOT = Path(_settings.mda_root)
 DEFAULT_FISCAL_YEAR = _settings.default_fiscal_year
 
 logger = logging.getLogger(__name__)
+
+
+def _stable_seed_for_company(stock_code: str) -> int:
+    """基于股票代码生成稳定种子（不依赖Python内置hash的随机化）"""
+    return int(hashlib.md5(stock_code.encode("utf-8")).hexdigest(), 16) % (2**32)
 
 
 class AnalysisOrchestrator:
@@ -112,6 +118,9 @@ class AnalysisOrchestrator:
 
         company_name = company.company_name
         stock_code = company.stock_code
+        
+        validate_and_fix_industry(db, stock_code, company.industry)
+        
         logger.info(
             f"开始分析企业: {company_name} ({stock_code}), force_refresh={force_refresh}",
             extra={"extra_fields": {
@@ -275,9 +284,11 @@ class AnalysisOrchestrator:
                     "total": total_env,
                     "done": 0,
                 })
-                result = run_mock_analysis(text, company.industry)
+                result = run_mock_analysis(text, company.industry, industry_median=get_industry_median(db, company.industry, current_year))
         else:
-            result = run_mock_analysis(text, company.industry)
+            # Mock模式：从数据库获取真实行业基准（若已有），确保GW指数稳定
+            db_median = get_industry_median(db, company.industry, current_year)
+            result = run_mock_analysis(text, company.industry, industry_median=db_median)
             await asyncio.sleep(0.3)
 
         push_fn("progress", {
@@ -599,7 +610,7 @@ class AnalysisOrchestrator:
             return generate_mock_company_text(
                 company.company_name,
                 company.industry,
-                seed=hash(company.stock_code + str(2025)) % 100000,
+                seed=_stable_seed_for_company(company.stock_code),
                 target_gw=target_gw
             )
         return """公司本年度环保投入达到5000万元，同比增长15%。通过ISO14001环境管理体系认证，
@@ -771,7 +782,7 @@ class AnalysisOrchestrator:
         from app.models.industry import IndustryBenchmark
         from datetime import datetime
 
-        # 获取企业趋势
+        # 获取企业趋势（所有年份）
         trend = (
             db.query(AnalysisRecord)
             .filter(
@@ -780,7 +791,6 @@ class AnalysisOrchestrator:
                 AnalysisRecord.gw_index.isnot(None),
             )
             .order_by(AnalysisRecord.year.desc())
-            .limit(5)
             .all()
         )
 
@@ -829,7 +839,7 @@ class AnalysisOrchestrator:
             "analyzed_at": record.analyzed_at.isoformat() if record.analyzed_at else None,
             "industry_sample_count": industry_sample_count,
             "industry_used_seed_data": bool(industry_used_seed),
-            "trend": _build_trend_list(trend),
+            "trend": _build_trend_list(trend, db),
             "sentences": [
                 {
                     "id": s.id,
@@ -860,6 +870,99 @@ class AnalysisOrchestrator:
         result["dispute_sentences"] = disputed
         result["env_sentences_list"] = env_all
 
+        # 获取完整年度分组数据（包含所有年份，用于前端显示历年环境语句）
+        all_records = (
+            db.query(AnalysisRecord)
+            .filter(
+                AnalysisRecord.company_id == record.company_id,
+                AnalysisRecord.analysis_status == "completed",
+            )
+            .order_by(AnalysisRecord.year.desc(), AnalysisRecord.is_latest.desc())
+            .all()
+        )
+        year_map = {}
+        unique_records = []
+        for r in all_records:
+            if r.year not in year_map:
+                year_map[r.year] = r
+                unique_records.append(r)
+
+        year_groups = []
+        total_substantive = 0
+        total_descriptive = 0
+        total_dispute = 0
+        total_env = 0
+
+        for rec in unique_records:
+            rec_sentences = (
+                db.query(Sentence)
+                .filter(Sentence.analysis_record_id == rec.id)
+                .order_by(Sentence.sentence_order)
+                .all()
+            )
+            category_order = {"substantive": 0, "descriptive": 1, "dispute": 2, "non_env": 3, "non_environmental": 4}
+            rec_sentences.sort(key=lambda s: category_order.get(s.final_category, 5))
+
+            year_substantive = 0
+            year_descriptive = 0
+            year_dispute = 0
+            year_env = 0
+
+            sentence_list = []
+            if rec_sentences:
+                for s in rec_sentences:
+                    if s.needs_review:
+                        year_dispute += 1
+                        year_env += 1
+                    elif s.final_category == "substantive":
+                        year_substantive += 1
+                        year_env += 1
+                    elif s.final_category == "descriptive":
+                        year_descriptive += 1
+                        year_env += 1
+
+                    sentence_list.append({
+                        "id": s.id,
+                        "sentence_text": s.sentence_text,
+                        "sentence_order": s.sentence_order,
+                        "deepseek_result": s.deepseek_result,
+                        "qwen_result": s.qwen_result,
+                        "glm_result": s.glm_result,
+                        "final_category": s.final_category,
+                        "vote_type": s.vote_type,
+                        "confidence": s.confidence,
+                        "sentiment_score": s.sentiment_score,
+                        "needs_review": s.needs_review,
+                    })
+            else:
+                year_substantive = rec.substantive_count or 0
+                year_descriptive = rec.descriptive_count or 0
+                year_dispute = rec.dispute_count or 0
+                year_env = rec.env_sentences or 0
+
+            total_substantive += year_substantive
+            total_descriptive += year_descriptive
+            total_dispute += year_dispute
+            total_env += year_env
+
+            year_groups.append({
+                "year": rec.year,
+                "substantive_count": year_substantive,
+                "descriptive_count": year_descriptive,
+                "dispute_count": year_dispute,
+                "env_sentences": year_env,
+                "sentences": sentence_list,
+            })
+
+        result["yearGroups"] = year_groups
+        result["summary"] = {
+            "total_substantive": total_substantive,
+            "total_descriptive": total_descriptive,
+            "total_dispute": total_dispute,
+            "total_env_sentences": total_env,
+            "total_years": len(year_groups),
+        }
+
         return result
 
 
@@ -868,17 +971,36 @@ def sse(event_type: str, data: Dict[str, Any]) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _build_trend_list(trend):
-    """构建趋势列表（按年份升序，取最近5年）"""
+def _build_trend_list(trend, db=None):
+    """构建趋势列表（2012-2025 完整年份，缺失年份 GW 指数留空以形成断点）"""
     records = list(trend)
     records.reverse()
-    records = records[:5]
-    return [
-        {
-            "year": r.year,
-            "gw_index": r.gw_index,
-            "tone_score": r.tone_score,
-            "risk_level": r.risk_level,
-        }
-        for r in records
-    ]
+
+    year_map = {}
+    for r in records:
+        if r.year not in year_map:
+            year_map[r.year] = r
+
+    if not records:
+        return []
+
+    industry = records[0].company.industry if records[0].company else ""
+    start_year, end_year = 2012, 2025
+
+    result = []
+    for year in range(start_year, end_year + 1):
+        record = year_map.get(year)
+        industry_median = None
+        if db:
+            from app.services.industry_service import get_industry_median
+            industry_median = get_industry_median(db, industry, year)
+
+        result.append({
+            "year": year,
+            "gw_index": record.gw_index if record else None,
+            "tone_score": record.tone_score if record else None,
+            "risk_level": record.risk_level if record else None,
+            "industry_median_gw": industry_median,
+        })
+
+    return result
