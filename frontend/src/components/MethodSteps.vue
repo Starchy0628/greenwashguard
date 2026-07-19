@@ -547,7 +547,7 @@ const sectionRef = ref<HTMLElement | null>(null)
   color: var(--jade-dim);
   white-space: nowrap;
   min-width: 106px;
-  text-align: right;
+  text-align: left;
 }
 
 .param-desc {
