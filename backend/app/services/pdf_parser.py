@@ -35,7 +35,24 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> Tuple[str, O
     text = ""
     errors = []
 
-    # 方法 1: PyPDF2
+    try:
+        import fitz
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        pages = []
+        for page in doc:
+            page_text = page.get_text("text")
+            if page_text:
+                pages.append(page_text)
+        doc.close()
+        if pages:
+            text = "\n\n".join(pages)
+            if len(text.strip()) > 200:
+                return text, None
+    except ImportError:
+        pass
+    except Exception as e:
+        errors.append(f"PyMuPDF: {e}")
+
     try:
         from PyPDF2 import PdfReader
         reader = PdfReader(io.BytesIO(file_bytes))
@@ -51,7 +68,6 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> Tuple[str, O
     except Exception as e:
         errors.append(f"PyPDF2: {e}")
 
-    # 方法 2: pdfplumber
     try:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
@@ -67,10 +83,8 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> Tuple[str, O
     except Exception as e:
         errors.append(f"pdfplumber: {e}")
 
-    # 方法 3: 尝试从原始字节中提取（用于简单文本PDF）
     try:
         raw = file_bytes.decode('utf-8', errors='ignore')
-        # 提取流中的文本
         matches = re.findall(r'\(([^)]+)\)', raw)
         if matches:
             text = " ".join(m for m in matches if len(m) > 5)
@@ -79,9 +93,8 @@ def extract_text_from_pdf(file_bytes: bytes, filename: str = "") -> Tuple[str, O
     except Exception as e:
         errors.append(f"raw: {e}")
 
-    # 所有方法都失败
     if text.strip():
-        return text, None  # 即使短也返回
+        return text, None
 
     error_detail = "; ".join(errors) if errors else "无法解析PDF文件内容"
     return "", f"PDF解析失败：{error_detail}。请确认文件是否为文本型PDF（非扫描图片），或尝试使用其他格式。"
@@ -205,48 +218,103 @@ def extract_mda_section(text: str) -> str:
     - 第四节 经营情况讨论与分析
     - 第三节 管理层讨论与分析
     """
-    # 起始标题模式
     start_patterns = [
         r"(?:第[一二三四五六七八九十]+节\s*)?管理层讨论与分析",
         r"(?:第[一二三四五六七八九十]+节\s*)?经营情况讨论与分析",
+        r"(?:第[一二三四五六七八九十]+节\s*)?董事会报告\s*[\n\r]",
         r"Management's Discussion and Analysis",
         r"MD&A",
+        r"经营情况\s*讨论\s*与\s*分析",
+        r"管理层\s*讨论\s*与\s*分析",
     ]
 
-    # 结束标题模式（下一大节）
     end_patterns = [
-        r"(?:第[一二三四五六七八九十]+节\s*)?公司治理",
-        r"(?:第[一二三四五六七八九十]+节\s*)?环境和社会",
-        r"(?:第[一二三四五六七八九十]+节\s*)?社会责任",
-        r"(?:第[一二三四五六七八九十]+节\s*)?重要事项",
+        r"(?:第[一二三四五六七八九十]+节\s*)?公司治理\s",
+        r"(?:第[一二三四五六七八九十]+节\s*)?重要事项\s",
         r"(?:第[一二三四五六七八九十]+节\s*)?股份变动",
-        r"(?:第[一二三四五六七八九十]+节\s*)?财务报告",
-        r"(?:第[一二三四五六七八九十]+节\s*)?审计报告",
+        r"(?:第[一二三四五六七八九十]+节\s*)?财务报告\s",
+        r"(?:第[一二三四五六七八九十]+节\s*)?审计报告\s",
+        r"(?:第[一二三四五六七八九十]+节\s*)?内部控制",
+        r"(?:第[一二三四五六七八九十]+节\s*)?股东情况",
+        r"(?:第[一二三四五六七八九十]+节\s*)?优先股",
+        r"(?:第[一二三四五六七八九十]+节\s*)?董事、监事",
+        r"(?:第[一二三四五六七八九十]+节\s*)?公司债券",
+        r"第十节\s*财务报告",
+        r"第十一节\s*",
     ]
 
-    # 找起始位置
     start_pos = -1
     for pat in start_patterns:
-        m = re.search(pat, text[:50000])
+        m = re.search(pat, text[:150000])
         if m:
             start_pos = m.start()
             break
 
     if start_pos < 0:
-        return ""
+        alt_m = re.search(r"(讨论与分析|经营情况)", text[:150000])
+        if alt_m:
+            start_pos = max(0, alt_m.start() - 20)
+        else:
+            return ""
 
-    # 在起始位置后找结束位置
-    search_end = min(start_pos + 100000, len(text))
+    search_end = min(start_pos + 200000, len(text))
     end_pos = len(text)
     for pat in end_patterns:
-        m = re.search(pat, text[start_pos:search_end])
-        if m:
+        for m in re.finditer(pat, text[start_pos:search_end]):
             pos = start_pos + m.start()
-            if pos < end_pos and pos > start_pos + 500:
+            if pos > start_pos + 1000 and pos < end_pos:
                 end_pos = pos
+                break
 
     section = text[start_pos:end_pos].strip()
+    if len(section) < 500:
+        env_section = _extract_env_section(text)
+        if env_section:
+            return env_section
     return section if len(section) > 200 else ""
+
+
+def _extract_env_section(text: str) -> str:
+    """当无法定位MD&A章节时，尝试提取环境/社会责任相关章节或全文中含环保关键词的段落"""
+    env_start_patterns = [
+        r"(?:第[一二三四五六七八九十]+节\s*)?环境和社会责任",
+        r"(?:第[一二三四五六七八九十]+节\s*)?社会责任",
+        r"(?:第[一二三四五六七八九十]+节\s*)?环境保护",
+        r"(?:第[一二三四五六七八九十]+节\s*)?环境信息",
+        r"(?:第[一二三四五六七八九十]+节\s*)?绿色发展",
+        r"环境\s*保护\s*情况",
+        r"环保\s*工作\s*情况",
+        r"环境\s*责任",
+        r"ESG\s*情况",
+        r"可持续\s*发展",
+    ]
+    end_patterns = [
+        r"(?:第[一二三四五六七八九十]+节\s*)?[一二三四五六七八九十]+、",
+        r"(?:第[一二三四五六七八九十]+节\s*)?公司治理",
+        r"(?:第[一二三四五六七八九十]+节\s*)?重要事项",
+        r"(?:第[一二三四五六七八九十]+节\s*)?股份变动",
+        r"(?:第[一二三四五六七八九十]+节\s*)?财务报告",
+    ]
+
+    best_section = ""
+    for pat in env_start_patterns:
+        m = re.search(pat, text)
+        if m:
+            start = m.start()
+            search_end = min(start + 50000, len(text))
+            end = len(text)
+            for epat in end_patterns:
+                em = re.search(epat, text[start:search_end])
+                if em:
+                    epos = start + em.start()
+                    if epos > start + 300 and epos < end:
+                        end = epos
+                        break
+            section = text[start:end].strip()
+            if len(section) > len(best_section):
+                best_section = section
+
+    return best_section if len(best_section) > 200 else ""
 
 
 # ============================================================
@@ -362,11 +430,12 @@ def parse_report_full(file_bytes: bytes, filename: str = "") -> ParsedReport:
 
 def get_analysis_text(parsed: ParsedReport) -> str:
     """
-    获取用于分析的文本（MD&A 章节 + 表格句子）
+    获取用于分析的文本（MD&A 章节 + 表格句子 + 环境章节）
 
     优先顺序：
     1. 年报的 MD&A 章节（如有）
-    2. 全文
+    2. 环境/社会责任专门章节（如有）
+    3. 全文
     再加上表格转成的自然语言句子
     """
     parts = []
@@ -377,7 +446,6 @@ def get_analysis_text(parsed: ParsedReport) -> str:
     if not parts:
         parts.append(parsed.full_text)
 
-    # 加上表格句子
     if parsed.table_sentences:
         parts.append("\n".join(parsed.table_sentences))
 

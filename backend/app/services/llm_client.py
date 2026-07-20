@@ -185,20 +185,20 @@ class BaseLLMClient(ABC):
         pass
 
     def _parse_classification(self, response: str) -> str:
-        """从 LLM 响应中解析分类结果"""
+        """从 LLM 响应中解析分类结果，统一输出 non_env"""
         match = re.search(r"分类[：:]\s*(\w+)", response)
         if match:
             result = match.group(1).strip().lower()
-            if result in ["substantive", "descriptive", "non_environmental"]:
-                return result
+            if result in ["substantive", "descriptive", "non_environmental", "non_env"]:
+                return "non_env" if "non" in result else result
 
         patterns = [
             (r"实质性陈述", "substantive"),
             (r"描述性陈述", "descriptive"),
-            (r"非环保语句", "non_environmental"),
+            (r"非环保语句", "non_env"),
             (r"substantive", "substantive"),
             (r"descriptive", "descriptive"),
-            (r"non[_\-]environmental", "non_environmental"),
+            (r"non[_\-]env(?:ironmental)?", "non_env"),
         ]
         for pattern, label in patterns:
             if re.search(pattern, response, re.IGNORECASE):
@@ -453,7 +453,7 @@ class MockLLMClient(BaseLLMClient):
         if substantive_count >= 2:
             return "substantive"
         elif len(sentence) < 15:
-            return "non_environmental"
+            return "non_env"
         else:
             return "descriptive"
 
@@ -563,7 +563,7 @@ SENTIMENT_PROMPT = """你是一名环境信息披露情感分析专家。请对�
 class ClassificationType:
     SUBSTANTIVE = "substantive"
     DESCRIPTIVE = "descriptive"
-    NON_ENVIRONMENTAL = "non_environmental"
+    NON_ENV = "non_env"
 
 
 class VoteResultType:

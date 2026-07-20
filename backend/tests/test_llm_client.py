@@ -158,7 +158,7 @@ class TestMockLLMClient(unittest.TestCase):
         prompt = CLASSIFICATION_PROMPT.format(sentence=sentence)
         response = self.client.call(prompt)
         self.assertTrue(response.success)
-        self.assertIn(response.parsed_result, ["substantive", "descriptive", "non_environmental"])
+        self.assertIn(response.parsed_result, ["substantive", "descriptive", "non_env"])
 
     def test_sentiment_positive(self):
         """Mock情感分析：正面"""
@@ -207,7 +207,7 @@ class TestClassificationParsing(unittest.TestCase):
     def test_parse_non_env_chinese(self):
         """解析中文非环保标签"""
         result = self.client._parse_classification("这是非环保语句。")
-        self.assertEqual(result, "non_environmental")
+        self.assertEqual(result, "non_env")
 
     def test_parse_default_fallback(self):
         """无法解析时返回descriptive"""

@@ -51,7 +51,7 @@ class AnalysisRecordResponse(BaseModel):
     gw_index: float | None = None
     risk_level: str = "正常"
     fleiss_kappa: float | None = None
-    dispute_count: int = 0
+    divergence_count: int = 0
     analysis_status: str = "completed"
     analyzed_at: str | None = None
 
@@ -71,6 +71,7 @@ class SentenceResponse(BaseModel):
     vote_type: str | None = None
     confidence: float | None = None
     sentiment_score: float | None = None
+    sentiment_std: float | None = None
     needs_review: bool = False
 
     class Config:
@@ -78,11 +79,23 @@ class SentenceResponse(BaseModel):
 
 
 # ---- 仪表盘 ----
+class Top10Item(BaseModel):
+    id: int
+    stock_code: str
+    company_name: str
+    industry: str
+    gw_index: float | None = None
+    risk_level: str | None = None
+    year: int
+
+
 class DashboardMetrics(BaseModel):
     fleiss_kappa: float = 0.84
     human_agreement: float = 94.22
     total_sentences: int = 0
     total_companies: int = 0
+    covered_companies: int = 0
+    analyzed_companies: int = 0
     warn_threshold: float = 0.0
 
 

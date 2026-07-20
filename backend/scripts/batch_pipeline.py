@@ -61,7 +61,13 @@ DEFAULT_YEARS = list(range(2012, 2026))
 
 # 本地 MD&A 数据目录配置（与 analysis_orchestrator 保持一致）
 _settings = get_settings()
-MDA_ROOT = Path(_settings.mda_root)
+if _settings.mda_root:
+    _mda_path = Path(_settings.mda_root)
+    if not _mda_path.is_absolute():
+        _mda_path = Path(__file__).resolve().parent.parent.parent / _mda_path
+    MDA_ROOT = _mda_path
+else:
+    MDA_ROOT = None
 MDA_FILE_PATTERN = re.compile(r"^(\d{6})_(.+?)_(\d{4}-\d{2}-\d{2})\.txt$")
 TEXT_SUBDIR = "文本"
 
@@ -118,7 +124,7 @@ def _get_local_mda_text(stock_code: str, year: int) -> str:
     """
     if not stock_code:
         return ""
-    if not MDA_ROOT.exists():
+    if not MDA_ROOT or not MDA_ROOT.exists():
         return ""
 
     year_dir = MDA_ROOT / str(year)

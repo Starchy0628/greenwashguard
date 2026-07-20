@@ -227,27 +227,30 @@ def run_mock_analysis(text: str, industry: str = "白酒", industry_median: floa
     Args:
         industry_median: 从数据库获取的真实行业中位数。若为 None，则使用模拟值（仅用于无数据库上下文的场景）
     """
-    # 1. 句子切分
     raw_sentences = split_sentences(text)
     if not raw_sentences:
         raw_sentences = [text]
 
-    # 2. 环境关键词过滤（使用强弱关键词策略，同时过滤表格数据）
     from app.services.text_utils import contains_env_keywords, is_valid_sentence
     env_sentences = []
+    non_env_sentences = []
     for s in raw_sentences:
         if not is_valid_sentence(s):
             continue
         is_env, _ = contains_env_keywords(s)
         if is_env:
             env_sentences.append(s)
+        else:
+            non_env_sentences.append(s)
+
     if not env_sentences:
         env_sentences = raw_sentences
+        non_env_sentences = []
 
-    # 3. 三模型分类（模拟）
     sentence_results = []
     substantive_count = 0
     descriptive_count = 0
+    non_env_count = 0
     dispute_count = 0
     unanimous_count = 0
     majority_count = 0
@@ -257,24 +260,27 @@ def run_mock_analysis(text: str, industry: str = "白酒", industry_median: floa
         category, vote_type, confidence, model_results = mock_classify_sentence(sent)
         sentiment = 0.0
         sentiment_std = 0.0
-        if category == "descriptive":
+        if category == "non_env":
+            sentiment = None
+            sentiment_std = None
+            non_env_count += 1
+        elif category == "descriptive":
             sentiment, sentiment_std = mock_sentiment_score(sent)
-
-        if vote_type == "full_divergence":
-            dispute_count += 1
-            divergence_count += 1
+            descriptive_count += 1
+            if vote_type == "unanimous":
+                unanimous_count += 1
+            else:
+                majority_count += 1
         elif category == "substantive":
             substantive_count += 1
             if vote_type == "unanimous":
                 unanimous_count += 1
             else:
                 majority_count += 1
-        elif category == "descriptive":
-            descriptive_count += 1
-            if vote_type == "unanimous":
-                unanimous_count += 1
-            else:
-                majority_count += 1
+
+        if vote_type == "full_divergence":
+            dispute_count += 1
+            divergence_count += 1
 
         sentence_results.append({
             "sentence_text": sent,
@@ -290,19 +296,18 @@ def run_mock_analysis(text: str, industry: str = "白酒", industry_median: floa
             "needs_review": vote_type == "full_divergence",
         })
 
-    # 4. 计算环境语调（仅描述性语句）
+    non_env_count += len(non_env_sentences)
+
     descriptive_scores = [
         s["sentiment_score"] for s in sentence_results
         if s["final_category"] == "descriptive" and s["sentiment_score"] is not None
     ]
     tone_score = round(sum(descriptive_scores) / len(descriptive_scores), 6) if descriptive_scores else 0.0
 
-    # 5. 行业基准
     if industry_median is None:
         industry_median = _get_mock_industry_median(industry)
     gw_index = round(max(0.0, tone_score - industry_median), 6)
 
-    # 6. Fleiss' Kappa（模拟）
     total = unanimous_count + majority_count + divergence_count
     if total > 0:
         kappa = round(0.84 + random.uniform(-0.03, 0.03), 4)
@@ -314,11 +319,11 @@ def run_mock_analysis(text: str, industry: str = "白酒", industry_median: floa
         "env_sentences": len(env_sentences),
         "substantive_count": substantive_count,
         "descriptive_count": descriptive_count,
-        "non_env_count": len(raw_sentences) - len(env_sentences),
+        "non_env_count": non_env_count,
         "tone_score": tone_score,
         "industry_median_tone": industry_median,
         "gw_index": gw_index,
-        "risk_level": "正常",  # 稍后由行业基准服务动态计算
+        "risk_level": "正常",
         "fleiss_kappa": kappa,
         "dispute_count": dispute_count,
         "unanimous_count": unanimous_count,

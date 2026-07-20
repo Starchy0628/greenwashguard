@@ -124,38 +124,38 @@
       </div>
     </div>
 
-    <!-- 底部统计区域：4 个指标卡片 -->
+    <!-- Hero 下方：统计卡片 -->
     <div class="hero-stats">
       <StatCard
         label="分析语句数"
         :value="metrics.total_sentences"
-        :decimals="0"
         unit="句"
+        description="累计三模型分类语句总量"
         tone="jade"
-        description="累计纳入三模型分类的 MD&A 环境语句"
       />
       <StatCard
         label="覆盖企业数"
-        :value="metrics.total_companies"
-        :decimals="0"
+        :value="metrics.covered_companies"
         unit="家"
+        description="剔除金融行业上市公司及经营异常上市公司"
         tone="ink"
-        description="剔除金融、ST/*ST 后的 A 股上市公司样本"
+        help-anchor="exclusion-note"
+        help-tip="查看剔除原因"
       />
       <StatCard
         label="AI 准确率"
         :value="metrics.human_agreement"
-        :decimals="2"
         unit="%"
+        :decimals="1"
+        description="三模型投票与人工标注一致率"
         tone="gold"
-        description="三模型多数投票与人审标注的一致率"
       />
       <StatCard
         label="Fleiss' Kappa"
         :value="metrics.fleiss_kappa"
         :decimals="2"
+        description="三模型分类一致性系数"
         tone="cinnabar"
-        description="三模型独立分类的统计一致性指标"
       />
     </div>
 
@@ -212,9 +212,9 @@ import LiveSteps from './LiveSteps.vue'
 import ResultCard from './ResultCard.vue'
 import ToastNotification from './ToastNotification.vue'
 import PdfUpload from './PdfUpload.vue'
-import StatCard from './StatCard.vue'
 import BrandLogo from './BrandLogo.vue'
 import ChinaMap from './ChinaMap.vue'
+import StatCard from './StatCard.vue'
 import { useParallax } from '../composables/useParallax'
 
 // Naive UI 主题色：与设计系统的 jade 色对齐
@@ -240,7 +240,8 @@ const pdfUploadRef = ref<any>(null)
 // 仪表盘指标
 const metrics = reactive({
   total_sentences: 0,
-  total_companies: 0,
+  total_companies: 5495,
+  covered_companies: 5495,
   human_agreement: 94.22,
   fleiss_kappa: 0.84,
 })
@@ -456,6 +457,7 @@ async function fetchMetrics() {
     const data = await dashboardApi.getMetrics()
     metrics.total_sentences = data.total_sentences || 0
     metrics.total_companies = data.total_companies || 0
+    metrics.covered_companies = data.covered_companies || 0
     metrics.human_agreement = data.human_agreement ?? 94.22
     metrics.fleiss_kappa = data.fleiss_kappa ?? 0.84
   } catch (err) {

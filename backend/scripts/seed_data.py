@@ -33,18 +33,18 @@ FINANCIAL_INDUSTRIES = ["银行", "非银金融"]
 #  注意：已剔除金融类（招商银行被替换为美的集团）
 # ============================================================
 FULL_DEMO_COMPANIES = [
-    {"code": "600519", "name": "贵州茅台", "industry": "食品饮料", "base_gw": 0.0013},
-    {"code": "000858", "name": "五粮液", "industry": "食品饮料", "base_gw": 0.018},
-    {"code": "000333", "name": "美的集团", "industry": "家用电器", "base_gw": 0.0521},
-    {"code": "002594", "name": "比亚迪", "industry": "汽车", "base_gw": 0.1461},
-    {"code": "300750", "name": "宁德时代", "industry": "电力设备", "base_gw": 0.037},
-    {"code": "600048", "name": "保利发展", "industry": "房地产", "base_gw": 0.0746},
-    {"code": "600028", "name": "中国石化", "industry": "石油石化", "base_gw": 0.0},
-    {"code": "601857", "name": "中国石油", "industry": "石油石化", "base_gw": 0.0},
-    {"code": "000002", "name": "万科A", "industry": "房地产", "base_gw": 0.0},
-    {"code": "600309", "name": "万华化学", "industry": "基础化工", "base_gw": 0.0},
-    {"code": "000725", "name": "京东方A", "industry": "电子", "base_gw": 0.0},
-    {"code": "601012", "name": "隆基绿能", "industry": "电力设备", "base_gw": 0.0},
+    {"code": "600519", "name": "贵州茅台", "industry": "食品饮料", "base_gw": 0.002},
+    {"code": "000858", "name": "五粮液", "industry": "食品饮料", "base_gw": 0.02},
+    {"code": "000333", "name": "美的集团", "industry": "家用电器", "base_gw": 0.06},
+    {"code": "002594", "name": "比亚迪", "industry": "汽车", "base_gw": 0.12},
+    {"code": "300750", "name": "宁德时代", "industry": "电力设备", "base_gw": 0.04},
+    {"code": "600048", "name": "保利发展", "industry": "房地产", "base_gw": 0.08},
+    {"code": "600028", "name": "中国石化", "industry": "石油石化", "base_gw": 0.15},
+    {"code": "601857", "name": "中国石油", "industry": "石油石化", "base_gw": 0.12},
+    {"code": "000002", "name": "万科A", "industry": "房地产", "base_gw": 0.03},
+    {"code": "600309", "name": "万华化学", "industry": "基础化工", "base_gw": 0.18},
+    {"code": "000725", "name": "京东方A", "industry": "电子", "base_gw": 0.05},
+    {"code": "601012", "name": "隆基绿能", "industry": "电力设备", "base_gw": 0.01},
 ]
 
 # ============================================================
@@ -81,23 +81,59 @@ SEED_COMPANIES = {
 }
 
 
+def _rescale_sentence_sentiments(sentences: list[dict], target_tone: float) -> list[dict]:
+    """对句子级情感分数做线性缩放，使其均值等于target_tone，保证汇总tone一致"""
+    descriptive = [s for s in sentences if s.get("final") == "descriptive" and s.get("sentiment") is not None]
+    if not descriptive:
+        return sentences
+    current_mean = sum(s["sentiment"] for s in descriptive) / len(descriptive)
+    if abs(current_mean) < 0.001:
+        current_mean = 0.001
+    scale = target_tone / current_mean if abs(current_mean) > 0.01 else 1.0
+    scale = max(0.1, min(5.0, scale))
+    for s in descriptive:
+        new_val = round(max(-1.0, min(1.0, s["sentiment"] * scale)), 4)
+        s["sentiment"] = new_val
+        s["sentiment_std"] = round(min(0.15, s.get("sentiment_std", 0.05) * scale), 4)
+    return sentences
+
+
 def _generate_trend(base_gw: float, seed_val: int = 0) -> list[dict]:
-    """生成 2012-2025 共 14 年历史趋势数据"""
-    random.seed(hash(seed_val) % 100000)
+    """生成 2012-2025 共 14 年历史趋势数据（tone_score 生成器）
+
+    数值体系与 mock_sentiment_score 对齐：
+    - 情感分数(sentiment)范围: [-1, 1]，描述性语句的情感均值
+    - 语调(tone_score)范围: 通常 [0.0, 0.5]（企业MD&A描述性语句大多偏正面）
+    - 行业中位数通常在 [0.15, 0.30]
+    - GW = max(0, tone - median)，范围 [0, ~0.4]
+
+    设计原则：
+    - 大趋势：早期tone偏高（描述性空泛表述多、GW高），近年逐渐降低
+    - 平滑性：随机游走避免年际跳变
+    - 波动幅度：相对波动（±10%）
+    - gw_index不在此处生成，最后由行业中位数统一重算
+    """
+    rng = random.Random(hash(seed_val) % 100000)
     years = list(range(2012, 2026))
+    n_years = len(years)
     trend = []
+
+    median_approx = 0.22
+    extra_tone = base_gw
     for i, year in enumerate(years):
         if year == 2025:
-            gw = max(0.0, base_gw)
-            tone = 0.55 + base_gw / 2
+            target_extra = base_gw * 0.7
+            extra_tone = target_extra
         else:
-            progress = i / 13.0
-            variation = random.uniform(-0.03, 0.03)
-            # 早期 GW 更高，逐渐下降（越来越环保是大趋势）
-            gw_factor = 0.3 + progress * 0.7
-            gw = max(0.0, round(base_gw * gw_factor + variation, 4))
-            tone = 0.5 + gw / 2 + random.uniform(-0.02, 0.02)
-        trend.append({"year": year, "gw": gw, "tone": tone})
+            progress = i / (n_years - 1)
+            target_extra = base_gw * (1.1 - progress * 0.4)
+            drift = (target_extra - extra_tone) * 0.3
+            noise = abs(extra_tone) * rng.uniform(-0.1, 0.1) if abs(extra_tone) > 0.005 else rng.uniform(-0.005, 0.005)
+            extra_tone = extra_tone + drift + noise
+
+        tone = round(median_approx + extra_tone + rng.uniform(-0.01, 0.01), 4)
+        tone = max(-0.1, min(0.8, tone))
+        trend.append({"year": year, "tone": tone})
     return trend
 
 
@@ -127,41 +163,38 @@ def _seed_full_demo_companies(db):
             is_latest = (y["year"] == 2025)
             data_source = "MD&A"
 
-            # 生成语句（最新一年）
             sentences = []
             summary = None
             if is_latest:
                 sentences, summary = _generate_demo_sentences(
-                    comp["name"], comp["industry"], y["gw"],
+                    comp["name"], comp["industry"], comp["base_gw"],
                     seed_val=hash(comp["code"] + str(y["year"])) % 100000
                 )
 
-            # 最新一年使用 run_mock_analysis 的结果（确保与拉取一致）
             if summary:
                 total_sentences = summary["total_sentences"]
                 env_sentences = summary["env_sentences"]
                 substantive_count = summary["substantive_count"]
                 descriptive_count = summary["descriptive_count"]
                 non_env_count = summary["non_env_count"]
-                tone_score = summary["tone_score"]
-                industry_median_tone = summary["industry_median_tone"]
-                gw_index = summary["gw_index"]
                 fleiss_kappa = summary["fleiss_kappa"]
                 dispute_count = summary["dispute_count"]
+                target_tone = y["tone"]
+                sentences = _rescale_sentence_sentiments(sentences, target_tone)
             else:
-                # 历史年份用估计值（比例与最新年份一致）
                 total_sentences = 100 + idx * 10
                 env_sentences = 30 + idx * 3
                 substantive_count = int(env_sentences * 0.6)
                 descriptive_count = int(env_sentences * 0.32)
                 non_env_count = total_sentences - env_sentences
                 dispute_count = max(1, int(env_sentences * 0.08))
-                tone_score = round(y["tone"], 6)
-                industry_median_tone = 0.58
-                gw_index = round(y["gw"], 6)
                 fleiss_kappa = 0.84
 
-            risk_level = "预警" if gw_index > 0.15 else "正常"
+            tone_score = round(y["tone"], 6)
+
+            industry_median_tone = 0.5
+            gw_index = 0.0
+            risk_level = "正常"
 
             record = AnalysisRecord(
                 company_id=company.id,
@@ -280,14 +313,14 @@ def _seed_benchmark_companies(db):
                             "食品饮料", "家用电器", "社会服务", "商贸零售", "农林牧渔",
                             "公用事业", "交通运输", "建筑装饰", "国防军工", "电子", "房地产"]
 
-            random.seed(hash(name + industry) % 100000)
+            rng = random.Random(hash(name + industry) % 100000)
 
             if industry in high_pollution:
-                base_gw = round(random.uniform(0.0, 0.35), 4)
+                base_gw = round(rng.uniform(-0.03, 0.28), 4)
             elif industry in medium_pollution:
-                base_gw = round(random.uniform(0.0, 0.2), 4)
+                base_gw = round(rng.uniform(-0.05, 0.18), 4)
             else:
-                base_gw = round(random.uniform(0.0, 0.25), 4)
+                base_gw = round(rng.uniform(-0.06, 0.15), 4)
 
             company = Company(
                 stock_code=stock_code,
@@ -309,41 +342,38 @@ def _seed_benchmark_companies(db):
                 is_latest = (y["year"] == 2025)
                 data_source = "MD&A"
 
-                # 最新一年生成语句数据
                 sentences = []
                 summary = None
                 if is_latest:
                     sentences, summary = _generate_demo_sentences(
-                        name, industry, y["gw"],
+                        name, industry, base_gw,
                         seed_val=hash(stock_code + str(y["year"])) % 100000
                     )
 
-                # 最新一年使用 run_mock_analysis 的结果（确保与拉取一致）
                 if summary:
                     total_sentences = summary["total_sentences"]
                     env_sentences = summary["env_sentences"]
                     substantive_count = summary["substantive_count"]
                     descriptive_count = summary["descriptive_count"]
                     non_env_count = summary["non_env_count"]
-                    tone_score = summary["tone_score"]
-                    industry_median_tone = summary["industry_median_tone"]
-                    gw_index = summary["gw_index"]
                     fleiss_kappa = summary["fleiss_kappa"]
                     dispute_count = summary["dispute_count"]
+                    target_tone = y["tone"]
+                    sentences = _rescale_sentence_sentiments(sentences, target_tone)
                 else:
-                    # 历史年份用估计值
                     total_sentences = 80
                     env_sentences = 25
                     substantive_count = int(env_sentences * 0.6)
                     descriptive_count = int(env_sentences * 0.32)
                     non_env_count = total_sentences - env_sentences
                     dispute_count = max(1, int(env_sentences * 0.08))
-                    tone_score = round(y["tone"], 6)
-                    industry_median_tone = 0.58
-                    gw_index = round(y["gw"], 6)
                     fleiss_kappa = 0.82
 
-                risk_level = "预警" if gw_index > 0.15 else "正常"
+                tone_score = round(y["tone"], 6)
+
+                industry_median_tone = 0.5
+                gw_index = 0.0
+                risk_level = "正常"
 
                 record = AnalysisRecord(
                     company_id=company.id,
@@ -410,11 +440,37 @@ def seed_all():
         _seed_benchmark_companies(db)
         db.commit()
 
-        # 重新计算行业基准
-        from app.services.industry_service import compute_industry_benchmarks, update_risk_levels
-        print("  → 重新计算行业基准和风险等级...")
+        from app.services.industry_service import compute_industry_benchmarks, update_risk_levels, get_industry_median, _update_warn_thresholds
+        from app.models.company import FINANCIAL_INDUSTRIES
+        print("  → 重新计算行业基准...")
         for year in range(2012, 2026):
             compute_industry_benchmarks(db, year)
+        db.commit()
+
+        print("  → 用真实行业基准重新计算所有企业GW指数...")
+        records = (
+            db.query(AnalysisRecord)
+            .join(Company, AnalysisRecord.company_id == Company.id)
+            .filter(
+                AnalysisRecord.tone_score.isnot(None),
+                Company.is_st == False,
+                Company.industry.notin_(FINANCIAL_INDUSTRIES),
+            )
+            .all()
+        )
+        for r in records:
+            median = get_industry_median(db, r.company.industry, r.year)
+            r.industry_median_tone = round(median, 6)
+            r.gw_index = round(max(0.0, r.tone_score - median), 6)
+        db.commit()
+
+        print("  → 重新计算GW预警阈值...")
+        for year in range(2012, 2026):
+            _update_warn_thresholds(db, year)
+        db.commit()
+
+        print("  → 更新风险等级...")
+        for year in range(2012, 2026):
             update_risk_levels(db, year)
         db.commit()
 

@@ -17,6 +17,8 @@ MIN_REAL_SAMPLES = 5  # 真实企业数 ≥ 5 时不用种子数据
 
 logger = logging.getLogger(__name__)
 
+EXCLUDED_INDUSTRIES = FINANCIAL_INDUSTRIES + ["其他"]
+
 SW_L1_VALID_INDUSTRIES = {
     "农林牧渔", "煤炭", "石油石化", "基础化工", "钢铁", "有色金属",
     "电子", "电力设备", "汽车", "机械设备", "国防军工", "建筑材料",
@@ -90,7 +92,7 @@ def compute_industry_benchmarks(db: Session, year: int):
             AnalysisRecord.tone_score.isnot(None),
             AnalysisRecord.analysis_status == "completed",
             Company.is_st == False,
-            Company.industry.notin_(FINANCIAL_INDUSTRIES),
+            Company.industry.notin_(EXCLUDED_INDUSTRIES),
         )
         .all()
     )
@@ -192,7 +194,7 @@ def _count_real_companies_by_industry(db: Session, year: int) -> dict[str, int]:
             Company.is_seed == False,
             Company.is_active == True,
             Company.is_st == False,
-            Company.industry.notin_(FINANCIAL_INDUSTRIES),
+            Company.industry.notin_(EXCLUDED_INDUSTRIES),
             AnalysisRecord.year == year,
             AnalysisRecord.analysis_status == "completed",
         )
@@ -203,17 +205,20 @@ def _count_real_companies_by_industry(db: Session, year: int) -> dict[str, int]:
 
 
 def _update_warn_thresholds(db: Session, year: int):
-    """更新全市场GW指数预警阈值（剔除金融类、ST类企业）"""
+    """更新全市场GW指数预警阈值（剔除金融类、ST类、无行业企业）
+    
+    按年份计算全市场GW指数的80%分位作为预警阈值
+    """
     records = (
         db.query(AnalysisRecord)
         .join(Company, AnalysisRecord.company_id == Company.id)
         .filter(
             AnalysisRecord.year == year,
             AnalysisRecord.gw_index.isnot(None),
+            AnalysisRecord.gw_index > 0,
             AnalysisRecord.analysis_status == "completed",
-            AnalysisRecord.is_latest == True,
             Company.is_st == False,
-            Company.industry.notin_(FINANCIAL_INDUSTRIES),
+            Company.industry.notin_(EXCLUDED_INDUSTRIES),
         )
         .all()
     )

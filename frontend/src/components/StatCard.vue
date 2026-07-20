@@ -1,21 +1,30 @@
 <template>
   <div
     ref="rootRef"
-    class="stat-card group relative overflow-hidden bg-white rounded-card border border-line p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover"
+    class="stat-card group relative overflow-hidden bg-white rounded-[20px] border border-line p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
-    <!-- 顶部装饰条 -->
     <div
-      class="absolute top-0 left-0 right-0 h-[3px] transition-opacity duration-300"
+      class="absolute top-0 left-0 right-0 h-[3px] transition-opacity duration-300 rounded-t-[20px]"
       :class="accentBarClass"
       :style="{ opacity: hovered ? 1 : 0.55 }"
     />
-    <!-- 指标名称 -->
-    <div class="text-xs font-medium tracking-wider uppercase text-ink-muted mb-2">
-      {{ label }}
+    <div class="text-xs font-medium tracking-wider uppercase text-ink-muted mb-2 flex items-center gap-1.5">
+      <span>{{ label }}</span>
+      <button
+        v-if="helpAnchor"
+        class="help-btn inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] text-ink-dim hover:text-jade hover:bg-jade-soft transition-colors cursor-pointer"
+        :title="helpTip || '查看说明'"
+        @click.stop="scrollToHelp"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
     </div>
-    <!-- 数值 + 单位 -->
     <div class="flex items-baseline gap-1">
       <span
         class="text-3xl font-bold tabular-nums leading-none"
@@ -27,11 +36,9 @@
         {{ unit }}
       </span>
     </div>
-    <!-- 副描述 -->
-    <div v-if="description" class="mt-2 text-xs text-ink-dim">
-      {{ description }}
+    <div v-if="description" class="mt-2 text-xs text-ink-dim leading-relaxed">
+      <span>{{ description }}</span>
     </div>
-    <!-- 角标图标 -->
     <div
       class="absolute right-3 top-3 w-7 h-7 rounded-full flex items-center justify-center text-[10px] transition-transform duration-300 group-hover:scale-110"
       :class="iconWrapClass"
@@ -76,6 +83,8 @@ interface Props {
   decimals?: number
   description?: string
   tone?: 'jade' | 'gold' | 'cinnabar' | 'ink'
+  helpAnchor?: string
+  helpTip?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -122,6 +131,22 @@ const accentBarClass = computed(() => toneConf.value.bar)
 const valueClass = computed(() => toneConf.value.value)
 const iconWrapClass = computed(() => toneConf.value.icon)
 
+function scrollToHelp() {
+  if (!props.helpAnchor) return
+  const el = document.getElementById(props.helpAnchor)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.animate(
+      [
+        { boxShadow: '0 0 0 0 rgba(58, 122, 110, 0.5)' },
+        { boxShadow: '0 0 0 10px rgba(58, 122, 110, 0)' },
+        { boxShadow: '0 0 0 0 rgba(58, 122, 110, 0)' },
+      ],
+      { duration: 1600, easing: 'ease-out' }
+    )
+  }
+}
+
 onMounted(() => {
   setupObserver(rootRef.value)
 })
@@ -130,5 +155,12 @@ onMounted(() => {
 <style scoped>
 .stat-card {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.help-btn {
+  line-height: 1;
+  border: none;
+  background: transparent;
+  padding: 0;
 }
 </style>

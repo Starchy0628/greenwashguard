@@ -3,7 +3,6 @@
     <div class="method-container">
       <SectionTitle>
         方法与数据说明
-        <template #aux>数据更新于 2026 年 1 月 1 日</template>
       </SectionTitle>
       
       <!-- 流程步骤卡片 -->
@@ -135,6 +134,20 @@
         </div>
       </div>
       
+      <!-- 剔除说明 -->
+      <div id="exclusion-note" class="exclusion-note">
+        <div class="exclusion-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <p class="exclusion-text">
+          <b>样本筛选说明：</b>金融行业专用会计准则、经营模式、环境披露逻辑与实体企业差异较大，绿色信贷等业务易混淆企业自身环保行为，干扰 GW 指数测算；经营异常企业财务指标失真、环境披露动机扭曲，因此予以剔除。
+        </p>
+      </div>
+
       <!-- 合作伙伴logo -->
       <div class="partners-section">
         <div class="partners-title">技术支持 &amp; 数据来源</div>
@@ -367,9 +380,48 @@ const sectionRef = ref<HTMLElement | null>(null)
   z-index: 1;
 }
 
+/* 剔除说明 */
+.exclusion-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(58, 122, 110, 0.04);
+  border: 1px solid rgba(58, 122, 110, 0.12);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  transition: box-shadow 0.3s ease;
+}
+
+.exclusion-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(58, 122, 110, 0.12);
+  color: var(--jade);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.exclusion-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+
+.exclusion-text b {
+  color: var(--jade-dim);
+  font-weight: 600;
+}
+
 /* 合作伙伴logo */
 .partners-section {
-  margin-top: 32px;
+  margin-top: 28px;
   padding-top: 28px;
   border-top: 1px solid rgba(58, 122, 110, 0.1);
 }

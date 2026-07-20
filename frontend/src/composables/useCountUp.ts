@@ -90,7 +90,7 @@ export function useCountUp(options: CountUpOptions) {
     if (newEnd > 0) {
       startAnimation()
     }
-  })
+  }, { immediate: true })
 
   onUnmounted(() => {
     if (rafId) cancelAnimationFrame(rafId)

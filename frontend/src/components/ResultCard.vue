@@ -7,8 +7,13 @@
           <span class="result-code">{{ result?.stock_code }}</span>
         </div>
         <div class="result-industry">
-          所属行业：{{ result?.industry }}
-          <span v-if="isSampleInsufficient" class="ref-tag" title="行业样本量不足30家，结果仅供参考">参考</span>
+          <span class="industry-main">
+            所属行业：{{ result?.industry }}
+            <span v-if="isSampleInsufficient" class="ref-tag" title="行业样本量不足30家，结果仅供参考">参考</span>
+          </span>
+          <span class="industry-note" title="行业分类依据《申万宏源行业分类标准（2021版）》，部分企业手动调整，请以实际归类为准">
+            行业分类依据《申万宏源行业分类标准（2021版）》，部分企业手动调整，请以实际归类为准。
+          </span>
         </div>
       </div>
       <SealTag :show="isWarn" />
@@ -37,6 +42,10 @@
         <div class="ml">行业样本量
           <span v-if="isSampleInsufficient" class="ref-dot" title="样本量不足30家"></span>
         </div>
+      </div>
+      <div class="metric-item">
+        <div class="mv non-env">{{ nonEnvCount }}</div>
+        <div class="ml">非环保语句数</div>
       </div>
     </div>
 
@@ -72,6 +81,16 @@ const gwDisplay = computed(() => props.result?.gw_index?.toFixed(4) ?? '--')
 const isSampleInsufficient = computed(() => {
   const count = props.result?.industry_sample_count
   return count !== undefined && count !== null && count < 30
+})
+
+const nonEnvCount = computed(() => {
+  if (props.result?.summary?.total_non_env != null) {
+    return props.result.summary.total_non_env
+  }
+  if (props.result?.non_env_count != null) {
+    return props.result.non_env_count
+  }
+  return 0
 })
 
 const envSentences = computed(() =>
@@ -112,9 +131,32 @@ const trendData = computed(() => props.result?.trend || [])
   font-family: var(--font-mono);
 }
 .result-industry {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+.industry-main {
+  flex-shrink: 0;
+}
+.industry-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  text-align: right;
+  max-width: 420px;
+}
+@media (max-width: 720px) {
+  .result-industry {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .industry-note {
+    text-align: left;
+  }
 }
 
 .gw-big {
@@ -151,7 +193,7 @@ const trendData = computed(() => props.result?.trend || [])
 
 .metric-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin: 22px 0 24px;
   padding: 18px;
@@ -166,6 +208,9 @@ const trendData = computed(() => props.result?.trend || [])
   font-size: 22px;
   color: var(--jade-dim);
   font-variant-numeric: tabular-nums;
+}
+.metric-item .mv.non-env {
+  color: var(--text-muted);
 }
 .metric-item .ml {
   font-size: 11px;

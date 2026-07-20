@@ -1,21 +1,30 @@
 """
 从真实MD&A文本中提取环境语句并更新到数据库
 
-数据来源：E:\固定快速访问\下载\CMDA_管理层讨论与分析_ALL
+数据来源：通过 .env 中 MDA_ROOT 配置
 格式：年份/文本/股票代码_公司名称_日期.txt
 """
 import os
 import re
 import random
+from pathlib import Path
 from typing import List, Dict, Tuple
 
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.company import Company
 from app.models.analysis import AnalysisRecord
 from app.models.sentence import Sentence
 
 
-MDA_BASE_PATH = r"E:\固定快速访问\下载\CMDA_管理层讨论与分析_ALL"
+_settings = get_settings()
+if _settings.mda_root:
+    _mda_path = Path(_settings.mda_root)
+    if not _mda_path.is_absolute():
+        _mda_path = Path(__file__).resolve().parent.parent.parent / _mda_path
+    MDA_BASE_PATH = _mda_path
+else:
+    MDA_BASE_PATH = None
 
 
 ENV_KEYWORDS = [
@@ -30,14 +39,15 @@ ENV_KEYWORDS = [
 
 def load_mda_text(stock_code: str, year: int) -> str:
     """加载指定公司指定年份的MD&A文本"""
-    year_dir = os.path.join(MDA_BASE_PATH, str(year), "文本")
-    if not os.path.exists(year_dir):
+    if not MDA_BASE_PATH:
+        return ""
+    year_dir = MDA_BASE_PATH / str(year) / "文本"
+    if not year_dir.exists():
         return ""
     
     pattern = re.compile(f"{stock_code}_.*_{year}-12-31\\.txt")
-    for filename in os.listdir(year_dir):
-        if pattern.match(filename):
-            filepath = os.path.join(year_dir, filename)
+    for filepath in year_dir.iterdir():
+        if pattern.match(filepath.name):
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     return f.read()

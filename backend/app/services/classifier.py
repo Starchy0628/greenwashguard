@@ -171,7 +171,7 @@ class SentenceClassifier:
             "total": len(results),
             "substantive": 0,
             "descriptive": 0,
-            "non_environmental": 0,
+            "non_env": 0,
             "unanimous": 0,
             "majority": 0,
             "full_divergence": 0,

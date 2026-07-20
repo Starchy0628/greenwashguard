@@ -1,6 +1,16 @@
 <template>
   <div class="sent-group">
-    <h4>{{ title }}（共{{ totalEnvSentences }}条）</h4>
+    <div class="sent-group-header">
+      <h4>{{ title }}（共{{ totalEnvSentences }}条）</h4>
+      <a class="count-explain-link" @click="scrollToExplanation">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        数量说明
+      </a>
+    </div>
     <div v-if="!yearGroups.length" class="empty">暂无数据</div>
     <template v-else>
       <div
@@ -29,7 +39,8 @@
               <div>Deepseek: {{ s.deepseek_result }}</div>
               <div>Qwen: {{ s.qwen_result }}</div>
               <div>GLM: {{ s.glm_result }}</div>
-              <div v-if="s.sentiment_score !== null && s.sentiment_score !== undefined">情感评分: {{ s.sentiment_score?.toFixed(2) }}</div>
+              <div v-if="s.final_category === 'non_env' || s.final_category === 'non_environmental'" class="noise-label">情感评分：噪音</div>
+              <div v-else-if="s.sentiment_score !== null && s.sentiment_score !== undefined">情感评分: {{ s.sentiment_score?.toFixed(2) }}</div>
             </div>
           </div>
           <div v-if="group.sentences.length > 5" class="toggle-btn" @click.stop="toggleGroupExpand(group)">
@@ -77,18 +88,47 @@ function getVisibleSentences(group) {
 function toggleExpand(s) {
   s._open = !s._open
 }
+
+function scrollToExplanation() {
+  const el = document.getElementById('method-section')
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
 </script>
 
 <style scoped>
 .sent-group { margin-top: 26px; }
+.sent-group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 .sent-group h4 {
   font-size: 12px;
   letter-spacing: 1.5px;
   color: var(--text-muted);
   text-transform: uppercase;
-  margin-bottom: 12px;
+  margin: 0;
   font-weight: 600;
   font-family: var(--font-sans);
+}
+.count-explain-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--jade-dim);
+  cursor: pointer;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+.count-explain-link:hover {
+  color: var(--jade);
+  background: var(--jade-soft);
 }
 .empty { font-size: 13px; color: var(--text-muted); padding: 8px 0; }
 
@@ -178,6 +218,10 @@ function toggleExpand(s) {
   color: var(--text-muted);
   font-family: var(--font-mono);
   line-height: 1.8;
+}
+.noise-label {
+  color: var(--text-dim);
+  font-style: italic;
 }
 .sent-item.open .sent-detail { display: block; }
 

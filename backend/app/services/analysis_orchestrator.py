@@ -30,12 +30,19 @@ from app.services.industry_service import get_industry_median, get_warn_threshol
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.logging_setup import get_request_id
+from app.core.utils import sse
 
 MDA_FILE_PATTERN = re.compile(r"^(\d{6})_(.+?)_(\d{4}-\d{2}-\d{2})\.txt$")
 TEXT_SUBDIR = "文本"
 
 _settings = get_settings()
-MDA_ROOT = Path(_settings.mda_root)
+if _settings.mda_root:
+    _mda_path = Path(_settings.mda_root)
+    if not _mda_path.is_absolute():
+        _mda_path = Path(__file__).resolve().parent.parent.parent.parent / _mda_path
+    MDA_ROOT = _mda_path
+else:
+    MDA_ROOT = None
 DEFAULT_FISCAL_YEAR = _settings.default_fiscal_year
 
 logger = logging.getLogger(__name__)
@@ -145,11 +152,14 @@ class AnalysisOrchestrator:
             .first()
         )
 
-        if existing and not force_refresh:
+        settings = get_settings()
+
+        if existing and (not force_refresh or settings.app_mode != "real"):
             result = AnalysisOrchestrator._build_result_dict(existing, db)
             duration = time.time() - start_time
             logger.info(
-                f"分析完成（缓存命中）: {company_name}, 耗时={duration:.2f}s",
+                f"分析完成（缓存命中）: {company_name}, 耗时={duration:.2f}s"
+                + (" (mock模式下force_refresh返回缓存)" if force_refresh else ""),
                 extra={"extra_fields": {
                     "stock_code": stock_code,
                     "cached": True,
@@ -273,8 +283,8 @@ class AnalysisOrchestrator:
 
         if settings.app_mode == "real":
             try:
-                result = await AnalysisOrchestrator._run_real_classification_with_progress(
-                    env_sentences, company.industry, db, push_fn, total_env
+                result = await AnalysisOrchestrator._run_real_classification(
+                    env_sentences, company.industry, db, progress_callback=push_fn
                 )
             except Exception as e:
                 logger.warning(f"真实LLM分类失败，降级到Mock模式: {e}")
@@ -391,14 +401,20 @@ class AnalysisOrchestrator:
         push_fn("done", {"status": "success"})
 
     @staticmethod
-    async def _run_real_classification_with_progress(
+    async def _run_real_classification(
         sentences: List[str],
         industry: str,
         db: Session,
-        push_fn,
-        total: int,
+        progress_callback=None,
     ) -> Dict[str, Any]:
-        """真实模式分类 + 实时进度推送"""
+        """真实模式：调用三个 LLM 模型进行分类和情感打分
+
+        Args:
+            sentences: 待分类的环境相关语句列表
+            industry: 行业名称（用于获取行业基准）
+            db: 数据库会话
+            progress_callback: 可选的进度回调函数，签名为 callback(event_type, data_dict)
+        """
         from app.services.llm_client import DEFAULT_LLM_MODELS
         from app.services.classifier import SentenceClassifier
         from app.services.sentiment import SentimentAnalyzer
@@ -407,6 +423,7 @@ class AnalysisOrchestrator:
         from app.services.industry_service import get_industry_median
 
         settings = get_settings()
+        total = len(sentences)
 
         api_keys = {
             "deepseek-r1": settings.deepseek_api_key,
@@ -436,21 +453,19 @@ class AnalysisOrchestrator:
             )
             all_classifications.extend(batch_results)
 
-            done = min(i + batch_size, total)
-            push_fn("progress", {
-                "phase": "classifying",
-                "message": f"三模型独立分类投票中... ({done}/{total} 句)",
-                "total": total,
-                "done": done,
-            })
+            if progress_callback:
+                done = min(i + batch_size, total)
+                progress_callback("progress", {
+                    "phase": "classifying",
+                    "message": f"三模型独立分类投票中... ({done}/{total} 句)",
+                    "total": total,
+                    "done": done,
+                })
 
         voter = MajorityVotingFuser()
         voted_data_list = []
         for cr in all_classifications:
             fusion = voter.fuse(cr.model_results)
-            final_cat = fusion.final_result
-            if final_cat == "non_environmental":
-                final_cat = "non_env"
             voted_data_list.append({
                 "sentence_text": cr.sentence,
                 "model_results_list": [
@@ -458,7 +473,7 @@ class AnalysisOrchestrator:
                     cr.model_results.get("qwen-max", "descriptive"),
                     cr.model_results.get("glm-4.7", "descriptive"),
                 ],
-                "final_category": final_cat,
+                "final_category": fusion.final_result,
                 "vote_type": "unanimous" if fusion.confidence == 1.0 else "majority" if fusion.confidence >= 0.5 else "full_divergence",
                 "confidence": fusion.confidence,
                 "needs_review": fusion.is_ambiguous,
@@ -487,7 +502,10 @@ class AnalysisOrchestrator:
                 }
 
         for r in voted_data_list:
-            if r["sentence_text"] in sentiment_map:
+            if r["final_category"] == "non_env":
+                r["sentiment_score"] = None
+                r["sentiment_std"] = None
+            elif r["sentence_text"] in sentiment_map:
                 r["sentiment_score"] = sentiment_map[r["sentence_text"]]["avg_score"]
                 r["sentiment_std"] = sentiment_map[r["sentence_text"]]["std"]
             else:
@@ -550,8 +568,10 @@ class AnalysisOrchestrator:
         """
         if not company or not company.stock_code:
             return "", 0
-        if not MDA_ROOT.exists():
-            logger.warning(f"MD&A根目录不存在: {MDA_ROOT}")
+
+        if not MDA_ROOT or not MDA_ROOT.exists():
+            if MDA_ROOT:
+                logger.warning(f"MD&A根目录不存在: {MDA_ROOT}")
             return "", 0
 
         stock_code = company.stock_code
@@ -621,159 +641,6 @@ class AnalysisOrchestrator:
 坚持绿色发展理念，为美丽中国贡献力量。公司持续加大研发投入，提升核心竞争力。
 清洁能源使用比例提升至12%，碳排放强度降低8.5%。报告期内投入3000万元用于污染防治设施建设。
 公司治理结构持续优化，内部控制体系不断完善。积极参与公益环保活动。"""
-
-    @staticmethod
-    async def _run_real_classification(
-        sentences: List[str],
-        industry: str,
-        db: Session,
-    ) -> Dict[str, Any]:
-        """
-        真实模式：调用三个 LLM 模型进行分类和情感打分
-
-        Returns:
-            与 mock_service 返回结构一致的字典
-        """
-        from app.services.llm_client import DEFAULT_LLM_MODELS
-        from app.services.classifier import SentenceClassifier
-        from app.services.sentiment import SentimentAnalyzer
-        from app.services.fusion import MajorityVotingFuser
-        from app.services.calculator import GreenwashIndexCalculator
-        from app.services.industry_service import get_industry_median
-
-        settings = get_settings()
-
-        api_keys = {
-            "deepseek-r1": settings.deepseek_api_key,
-            "qwen-max": settings.qwen_api_key,
-            "glm-4.7": settings.glm_api_key,
-        }
-
-        classifier = SentenceClassifier(
-            model_configs=DEFAULT_LLM_MODELS,
-            api_keys=api_keys,
-            use_mock=False,
-        )
-        sentiment_analyzer = SentimentAnalyzer(
-            model_configs=DEFAULT_LLM_MODELS,
-            api_keys=api_keys,
-            use_mock=False,
-        )
-
-        # 逐句分类（分批异步并行，每批3句并发，每句内三模型并行）
-        all_classifications = []
-        batch_size = 3
-        for i in range(0, len(sentences), batch_size):
-            batch = sentences[i:i + batch_size]
-            batch_results = await classifier.classify_batch_async(
-                batch,
-                return_details=True,
-                max_concurrency=batch_size,
-            )
-            all_classifications.extend(batch_results)
-            await asyncio.sleep(0.1)
-
-        # 多数投票确权（使用 MajorityVotingFuser）
-        voter = MajorityVotingFuser()
-        voted_data_list = []
-        for cr in all_classifications:
-            fusion = voter.fuse(cr.model_results)
-            voted_data_list.append({
-                "sentence_text": cr.sentence,
-                "model_results_list": [
-                    cr.model_results.get("deepseek-r1", "descriptive"),
-                    cr.model_results.get("qwen-max", "descriptive"),
-                    cr.model_results.get("glm-4.7", "descriptive"),
-                ],
-                "final_category": fusion.final_result,
-                "vote_type": "unanimous" if fusion.confidence == 1.0 else "majority" if fusion.confidence >= 0.5 else "full_divergence",
-                "confidence": fusion.confidence,
-                "needs_review": fusion.is_ambiguous,
-            })
-
-        # 计算整体 Fleiss' Kappa
-        batch_for_kappa = [cr.model_results for cr in all_classifications]
-        fleiss_kappa = voter.calculate_overall_kappa(batch_for_kappa)
-
-        # 对描述性和实质性语句做情感打分
-        descriptive_substantive = [
-            r for r in voted_data_list
-            if r["final_category"] in ("descriptive", "substantive")
-        ]
-
-        sentiment_map = {}
-        if descriptive_substantive:
-            texts_for_sentiment = [r["sentence_text"] for r in descriptive_substantive]
-            sentiment_results = await sentiment_analyzer.analyze_batch_async(
-                texts_for_sentiment,
-                return_details=True,
-                max_concurrency=3,
-            )
-            for sr in sentiment_results:
-                sentiment_map[sr.sentence] = {
-                    "avg_score": sr.final_score,
-                    "std": sr.score_std,
-                }
-
-        for r in voted_data_list:
-            if r["sentence_text"] in sentiment_map:
-                r["sentiment_score"] = sentiment_map[r["sentence_text"]]["avg_score"]
-                r["sentiment_std"] = sentiment_map[r["sentence_text"]]["std"]
-            else:
-                r["sentiment_score"] = 0.0
-                r["sentiment_std"] = 0.0
-
-        # 统计数量
-        substantive_count = sum(1 for r in voted_data_list if r["final_category"] == "substantive")
-        descriptive_count = sum(1 for r in voted_data_list if r["final_category"] == "descriptive")
-        non_env_count = sum(1 for r in voted_data_list if r["final_category"] == "non_environmental")
-        divergence_count = sum(1 for r in voted_data_list if r["needs_review"])
-
-        # 计算语调分数（描述性语句的平均情感分）
-        descriptive_results = [r for r in voted_data_list if r["final_category"] == "descriptive"]
-        if descriptive_results:
-            tone_score = sum(r["sentiment_score"] for r in descriptive_results) / len(descriptive_results)
-        else:
-            tone_score = 0.0
-
-        # 获取行业中位数
-        current_year = DEFAULT_FISCAL_YEAR
-        industry_median = get_industry_median(db, industry, current_year)
-
-        # 计算 GW 指数
-        calc = GreenwashIndexCalculator()
-        gw_index = calc.calculate_greenwash_index(tone_score, industry_median)
-
-        # 构造 sentence_results
-        sentence_results = []
-        for idx, r in enumerate(voted_data_list):
-            sentence_results.append({
-                "sentence_text": r["sentence_text"],
-                "sentence_order": idx,
-                "deepseek_result": r["model_results_list"][0],
-                "qwen_result": r["model_results_list"][1],
-                "glm_result": r["model_results_list"][2],
-                "final_category": r["final_category"],
-                "vote_type": r["vote_type"],
-                "confidence": r["confidence"],
-                "sentiment_score": r["sentiment_score"],
-                "sentiment_std": r["sentiment_std"],
-                "needs_review": r["needs_review"],
-            })
-
-        return {
-            "total_sentences": len(sentence_results),
-            "env_sentences": len(sentence_results),
-            "substantive_count": substantive_count,
-            "descriptive_count": descriptive_count,
-            "non_env_count": non_env_count,
-            "tone_score": round(tone_score, 6),
-            "industry_median_tone": round(industry_median, 6),
-            "gw_index": round(gw_index, 6),
-            "fleiss_kappa": round(fleiss_kappa, 4),
-            "divergence_count": divergence_count,
-            "sentence_results": sentence_results,
-        }
 
     @staticmethod
     def _build_result_dict(record: AnalysisRecord, db: Session) -> Dict[str, Any]:
@@ -900,7 +767,7 @@ class AnalysisOrchestrator:
                 .order_by(Sentence.sentence_order)
                 .all()
             )
-            category_order = {"substantive": 0, "descriptive": 1, "dispute": 2, "non_env": 3, "non_environmental": 4}
+            category_order = {"substantive": 0, "descriptive": 1, "dispute": 2, "non_env": 3}
             rec_sentences.sort(key=lambda s: category_order.get(s.final_category, 5))
 
             year_substantive = 0
@@ -964,11 +831,6 @@ class AnalysisOrchestrator:
         }
 
         return result
-
-
-def sse(event_type: str, data: Dict[str, Any]) -> str:
-    """生成 SSE 事件格式（纯文本，调用方 yield）"""
-    return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 def _build_trend_list(trend, db=None):

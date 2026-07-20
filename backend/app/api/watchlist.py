@@ -5,11 +5,12 @@ from app.core.database import get_db
 from app.models.company import Company, FINANCIAL_INDUSTRIES
 from app.models.watchlist import Watchlist
 from app.models.analysis import AnalysisRecord
+from app.schemas import WatchlistItemResponse
 
 router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
 
 
-@router.get("")
+@router.get("", response_model=list[WatchlistItemResponse])
 def get_watchlist(db: Session = Depends(get_db)):
     """获取关注列表（剔除金融类、ST类企业）"""
     items = (

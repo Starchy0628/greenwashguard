@@ -108,7 +108,7 @@ class GreenwashIndexCalculator:
                 result.substantive_count += 1
             elif r.classification == "descriptive":
                 result.descriptive_count += 1
-            elif r.classification == "non_environmental":
+            elif r.classification == "non_env":
                 result.non_env_count += 1
 
         result.avg_env_tone = self.calculate_company_tone(sentence_results)

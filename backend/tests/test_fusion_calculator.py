@@ -45,7 +45,7 @@ class TestMajorityVotingFuser(unittest.TestCase):
         results = {
             "model1": "substantive",
             "model2": "descriptive",
-            "model3": "non_environmental",
+            "model3": "non_env",
         }
         fusion = self.fuser.fuse(results)
         self.assertTrue(fusion.is_ambiguous)

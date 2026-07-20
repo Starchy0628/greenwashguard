@@ -11,6 +11,8 @@ from app.services.industry_service import validate_and_fix_industry
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
+EXCLUDED_INDUSTRIES = FINANCIAL_INDUSTRIES + ["其他"]
+
 
 @router.get("/search", response_model=list[CompanySearchResult])
 def search_companies(
@@ -75,7 +77,7 @@ def get_market_trend(db: Session = Depends(get_db)):
             AnalysisRecord.gw_index.isnot(None),
             AnalysisRecord.analysis_status == "completed",
             Company.is_st == False,
-            Company.industry.notin_(FINANCIAL_INDUSTRIES),
+            Company.industry.notin_(EXCLUDED_INDUSTRIES),
         )
         .all()
     )
@@ -112,7 +114,7 @@ def get_industry_trend(industry: str = None, db: Session = Depends(get_db)):
             AnalysisRecord.gw_index.isnot(None),
             AnalysisRecord.analysis_status == "completed",
             Company.is_st == False,
-            Company.industry.notin_(FINANCIAL_INDUSTRIES),
+            Company.industry.notin_(EXCLUDED_INDUSTRIES),
         )
     )
     if industry:
@@ -197,13 +199,14 @@ def get_company_all_sentences(company_id: int, db: Session = Depends(get_db)):
             unique_records.append(r)
     records = unique_records
 
-    category_order = {"substantive": 0, "descriptive": 1, "dispute": 2, "non_env": 3, "non_environmental": 4}
+    category_order = {"substantive": 0, "descriptive": 1, "dispute": 2, "non_env": 3}
 
     year_groups = []
     total_substantive = 0
     total_descriptive = 0
     total_dispute = 0
     total_env = 0
+    total_non_env = 0
 
     for record in records:
         sentences = (
@@ -218,6 +221,7 @@ def get_company_all_sentences(company_id: int, db: Session = Depends(get_db)):
         year_descriptive = 0
         year_dispute = 0
         year_env = 0
+        year_non_env = 0
 
         sentence_list = []
         if sentences:
@@ -231,6 +235,8 @@ def get_company_all_sentences(company_id: int, db: Session = Depends(get_db)):
                 elif s.final_category == "descriptive":
                     year_descriptive += 1
                     year_env += 1
+                elif s.final_category == "non_env":
+                    year_non_env += 1
 
                 sentence_list.append({
                     "id": s.id,
@@ -250,11 +256,13 @@ def get_company_all_sentences(company_id: int, db: Session = Depends(get_db)):
             year_descriptive = record.descriptive_count or 0
             year_dispute = record.dispute_count or 0
             year_env = record.env_sentences or 0
+            year_non_env = record.non_env_count or 0
 
         total_substantive += year_substantive
         total_descriptive += year_descriptive
         total_dispute += year_dispute
         total_env += year_env
+        total_non_env += year_non_env
 
         year_groups.append({
             "year": record.year,
@@ -262,6 +270,7 @@ def get_company_all_sentences(company_id: int, db: Session = Depends(get_db)):
             "descriptive_count": year_descriptive,
             "dispute_count": year_dispute,
             "env_sentences": year_env,
+            "non_env_count": year_non_env,
             "sentences": sentence_list,
         })
 
@@ -272,6 +281,7 @@ def get_company_all_sentences(company_id: int, db: Session = Depends(get_db)):
             "total_descriptive": total_descriptive,
             "total_dispute": total_dispute,
             "total_env_sentences": total_env,
+            "total_non_env": total_non_env,
             "total_years": len(year_groups),
         },
     }
