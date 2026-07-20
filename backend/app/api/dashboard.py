@@ -14,6 +14,9 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 EXCLUDED_INDUSTRIES = FINANCIAL_INDUSTRIES
 EXCLUDED_FOR_INDUSTRY = FINANCIAL_INDUSTRIES + ["其他"]
 
+# 实时监测企业总数（根据"公司基本信息_剔除金融和ST后.xlsx"统计：去重后5495家）
+TOTAL_MONITORED_COMPANIES = 5495
+
 
 def _get_latest_year(db: Session) -> int:
     """自动获取数据库中最新的分析年份"""
@@ -62,31 +65,15 @@ def get_top10_risk(db: Session = Depends(get_db)):
 def get_metrics(db: Session = Depends(get_db)):
     """获取仪表盘关键指标
 
-    total_companies: 实时监测企业总数 = 活跃+非ST+非金融企业
+    total_companies: 实时监测企业总数（根据权威数据源统计）
     analyzed_companies: 已有分析记录的企业数
     total_sentences: 分析的语句总数（非采样，实际处理的语句记录数）
     """
     EXCLUDED = set(FINANCIAL_INDUSTRIES)
-    total_companies = (
-        db.query(func.count(Company.id))
-        .filter(
-            Company.is_active == True,
-            Company.is_st == False,
-            Company.industry.notin_(list(EXCLUDED)),
-        )
-        .scalar()
-    ) or 0
 
-    covered_companies = (
-        db.query(func.count(Company.id))
-        .filter(
-            Company.is_active == True,
-            Company.is_st == False,
-            Company.industry.notin_(list(EXCLUDED)),
-            Company.industry != "其他",
-        )
-        .scalar()
-    ) or 0
+    # 企业总数使用权威数据源值（剔除金融、ST、去重后）
+    total_companies = TOTAL_MONITORED_COMPANIES
+    covered_companies = TOTAL_MONITORED_COMPANIES
 
     analyzed_companies = (
         db.query(func.count(func.distinct(AnalysisRecord.company_id)))
@@ -128,15 +115,7 @@ def get_risk_threshold(db: Session = Depends(get_db)):
     current_year = _get_latest_year(db)
     threshold = get_warn_threshold(db, current_year)
 
-    total_valid = (
-        db.query(func.count(func.distinct(Company.id)))
-        .filter(
-            Company.is_active == True,
-            Company.is_st == False,
-            Company.industry.notin_(list(EXCLUDED_INDUSTRIES)),
-        )
-        .scalar()
-    ) or 0
+    total_valid = TOTAL_MONITORED_COMPANIES
 
     warn_records = (
         db.query(AnalysisRecord)
