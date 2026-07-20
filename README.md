@@ -14,16 +14,16 @@
 
 ### 一键启动（Windows）
 
-**双击** **`启动系统.vbs`**
+**双击运行 `系统启动运行.py`**（或在命令行执行 `python 系统启动运行.py`）
 
-- 无黑框、无控制台窗口
 - 自动检查环境、安装依赖、初始化数据库
+- 后台静默启动服务（无黑框、无控制台窗口）
 - 启动完成后自动打开浏览器
 - 访问地址：<http://localhost:8000>
 
-**停止服务：双击** **`停止系统.vbs`**
+**停止服务**：在任务管理器中结束 `pythonw.exe` / `python.exe` 进程，或关闭系统重启。
 
-> 首次启动会自动安装Python依赖，可能需要1-2分钟，请耐心等待。
+> 首次启动会自动安装 Python 依赖，可能需要 1-2 分钟，请耐心等待。
 
 ***
 
@@ -42,11 +42,10 @@
 
 ```
 greenwashguard/
-├── 启动系统.vbs                 # 一键静默启动（推荐）
-├── 停止系统.vbs                 # 停止服务
-├── launcher.py                  # 启动管理器（VBS调用）
+├── 系统启动运行.py                # 一键启动脚本（推荐，无日志版）
 ├── README.md                    # 本文档
-├── technical_design.md          # 详细技术设计文档
+├── 技术文档.md                   # 详细技术设计文档
+├── 数据来源说明.txt              # CNRDS数据来源版权声明
 │
 ├── backend/                     # FastAPI 后端
 │   ├── app/
@@ -68,7 +67,7 @@ greenwashguard/
 │   │       ├── mock_service.py          # Mock模式（离线演示）
 │   │       ├── pdf_parser.py            # PDF解析
 │   │       └── cninfo_crawler.py        # 巨潮资讯年报爬虫
-│   ├── scripts/                 # 工具脚本
+│   ├── scripts/                 # 数据初始化与运维工具脚本
 │   ├── data/                    # 行业映射等数据
 │   ├── tests/                   # 单元测试
 │   ├── requirements.txt         # Python依赖
@@ -174,10 +173,10 @@ python -m pytest tests/ -v
 ## 常见问题
 
 **Q: 双击启动后浏览器没打开？**
-A: 请查看 `launcher.log` 日志文件，或手动访问 <http://localhost:8000>
+A: 请稍候 30-45 秒等待服务启动，或手动访问 <http://localhost:8000>。也可在命令行执行 `python 系统启动运行.py` 查看启动过程。
 
 **Q: 提示端口被占用？**
-A: 先双击 `停止系统.vbs`，或手动结束python进程后重新启动。
+A: 在任务管理器中结束已有的 `pythonw.exe` / `python.exe` 进程后重新启动。
 
 **Q: 需要联网吗？**
 A: Mock模式可以离线使用。真实LLM模式需要联网调用三个AI模型的API。
@@ -190,9 +189,8 @@ A:
 - `.env`：本地配置（含密钥），不要分享
 - `__pycache__/`：Python缓存，可删除
 - `node_modules/`：前端依赖（已预构建dist，不需要）
-- `.server.pid`、`launcher.log`：运行时生成，可删除
 
-详细说明请见 [technical\_design.md](technical_design.md)。
+详细说明请见 [技术文档.md](技术文档.md)。
 
 ***
 
@@ -202,3 +200,4 @@ A:
 - **真实模式**需要三个平台的API Key，注意控制调用量
 - 金融类、ST/\*ST/PT公司不在分析范围内
 
+***
